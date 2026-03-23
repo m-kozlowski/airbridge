@@ -23,6 +23,8 @@ static NimBLEUUID NONIN_CONTINUOUS_UUID("0AAD7EA0-0D60-11E2-8E3C-0002A5D5C51B");
 
 static TaskHandle_t oxi_task_handle = nullptr;
 static volatile oxi_state_t state = OXI_DISABLED;
+static volatile bool state_dirty = false;
+static inline void set_state(oxi_state_t s) { state = s; state_dirty = true; }
 static oxi_reading_t reading = { -1, -1, false, 0 };
 static volatile bool feeding = false;
 static volatile bool scan_requested = false;
@@ -145,7 +147,7 @@ class OxiClientCB : public NimBLEClientCallbacks {
         reading.pulse_bpm = -1;
         reading.valid = false;
         if (state == OXI_STREAMING || state == OXI_BONDING) {
-            state = OXI_DISCONNECTED;
+            set_state(OXI_DISCONNECTED);
         }
     }
 
@@ -252,7 +254,7 @@ void BleOxi::task(void *param) {
 
     auto &cfg = Config::get();
     if (cfg.oxi_enabled) {
-        state = OXI_DISCONNECTED;
+        set_state(OXI_DISCONNECTED);
         scan_requested = true;
     }
 
@@ -264,13 +266,13 @@ void BleOxi::task(void *param) {
             disconnect_requested = false;
             if (pClient->isConnected()) pClient->disconnect();
             feeding = false;
-            state = OXI_DISABLED;
+            set_state(OXI_DISABLED);
         }
 
         if (scan_complete) {
             scan_complete = false;
             if (state == OXI_SCANNING) {
-                state = OXI_DISCONNECTED;
+                set_state(OXI_DISCONNECTED);
                 // Auto-connect
                 if (scan_result_count > 0) {
                     String target = cfg.oxi_device_addr;
@@ -294,7 +296,7 @@ void BleOxi::task(void *param) {
             scan_requested = false;
             scan_result_count = 0;
             scan_complete = false;
-            state = OXI_SCANNING;
+            set_state(OXI_SCANNING);
             NimBLEScan *pScan = NimBLEDevice::getScan();
             pScan->setScanCallbacks(&scanCB);
             pScan->setActiveScan(true);
@@ -314,7 +316,7 @@ void BleOxi::task(void *param) {
                 addr = scan_results[0].addr;
 
             if (addr.length() > 0) {
-                state = OXI_CONNECTING;
+                set_state(OXI_CONNECTING);
 
                 uint8_t atype = 1;
                 for (int i = 0; i < scan_result_count; i++) {
@@ -328,30 +330,35 @@ void BleOxi::task(void *param) {
                 NimBLEAddress bleAddr(std::string(addr.c_str()), atype);
                 bool ok = pClient->connect(bleAddr);
 
-                // connect() may return false even when connected (EALREADY)
+                // connect() may return false when already connected (EALREADY/EDONE)
                 if (!ok && pClient->isConnected()) {
-                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] connect() returned false but isConnected=true, proceeding\n");
+                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Already connected (err=%d), proceeding\n",
+                               pClient->getLastError());
                     ok = true;
                 }
 
                 if (ok) {
-                    state = OXI_BONDING;
-                    // Wait briefly for encryption to complete
-                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    set_state(OXI_BONDING);
+
+                    // Wait for encryption - poll up to 3s
+                    for (int i = 0; i < 30 && pClient->isConnected(); i++) {
+                        if (pClient->secureConnection()) break;
+                        vTaskDelay(pdMS_TO_TICKS(100));
+                    }
 
                     if (subscribe_services(pClient)) {
-                        state = OXI_STREAMING;
+                        set_state(OXI_STREAMING);
                         Log::logf(CAT_BLE, LOG_INFO, "[BLE] Streaming started\n");
                         if (cfg.oxi_auto_start) feeding = true;
                     } else {
                         Log::logf(CAT_BLE, LOG_WARN, "[BLE] No suitable services\n");
                         pClient->disconnect();
-                        state = OXI_DISCONNECTED;
+                        set_state(OXI_DISCONNECTED);
                     }
                 } else {
                     Log::logf(CAT_BLE, LOG_WARN, "[BLE] Connect failed, err=%d\n",
                                pClient->getLastError());
-                    state = OXI_DISCONNECTED;
+                    set_state(OXI_DISCONNECTED);
                 }
             }
         }
@@ -394,6 +401,7 @@ void BleOxi::stop_feed()   { feeding = false; }
 oxi_state_t BleOxi::get_state()            { return state; }
 const oxi_reading_t& BleOxi::get_reading() { return reading; }
 bool BleOxi::is_feeding()                  { return feeding; }
+bool BleOxi::state_changed()               { bool d = state_dirty; state_dirty = false; return d; }
 
 String BleOxi::get_scan_results() {
     String out;

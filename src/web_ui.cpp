@@ -959,8 +959,9 @@ void WebUI::init(uint16_t port) {
 static uint32_t last_status_push = 0;
 
 void WebUI::handle() {
-    // Periodic SSE push
-    if (events && events->count() > 0 && millis() - last_status_push >= 3000) {
+    // Push immediately on BLE state change, or every 3s
+    bool ble_changed = BleOxi::state_changed();
+    if (events && events->count() > 0 && (ble_changed || millis() - last_status_push >= 3000)) {
         last_status_push = millis();
 
         static const char *sys_names[] = {"IDLE","THERAPY","BOOTLOADER","OTA_ESP","OTA_AIRSENSE","TRANSPARENT","ERROR"};

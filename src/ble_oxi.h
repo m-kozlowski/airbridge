@@ -30,6 +30,7 @@ namespace BleOxi {
     oxi_state_t get_state();
     const oxi_reading_t& get_reading();
     bool is_feeding();
+    bool state_changed();  // returns true once after any state transition
 
     void task(void *param);
 
