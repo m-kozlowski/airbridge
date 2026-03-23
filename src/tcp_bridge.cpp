@@ -31,7 +31,7 @@ bool TcpBridge::wifi_setup() {
         return false;
     }
 
-    WiFi.setHostname(DEFAULT_HOSTNAME);
+    WiFi.setHostname(cfg.hostname.c_str());
 
     if (cfg.wifi_mode == 0 && cfg.wifi_ssid.length() > 0) {
 
@@ -57,7 +57,7 @@ bool TcpBridge::wifi_setup() {
     if (cfg.wifi_mode == 1) {
 
         WiFi.mode(WIFI_AP);
-        String ap_ssid = String(DEFAULT_HOSTNAME) + "_" +
+        String ap_ssid = cfg.hostname + "_" +
                          String((uint32_t)ESP.getEfuseMac(), HEX);
         WiFi.softAP(ap_ssid.c_str(), "airbridge");
         delay(100);  // let lwIP finish AP setup
@@ -68,7 +68,7 @@ bool TcpBridge::wifi_setup() {
 
     // wifi_mode 0 but no SSID configured
     WiFi.mode(WIFI_AP);
-    String ap_ssid = String(DEFAULT_HOSTNAME) + "_" +
+    String ap_ssid = cfg.hostname + "_" +
                      String((uint32_t)ESP.getEfuseMac(), HEX);
     WiFi.softAP(ap_ssid.c_str(), "airbridge");
     delay(100);

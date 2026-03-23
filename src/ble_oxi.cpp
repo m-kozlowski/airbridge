@@ -244,7 +244,7 @@ static void inject_reading() {
 
 
 void BleOxi::task(void *param) {
-    NimBLEDevice::init(DEFAULT_HOSTNAME);
+    NimBLEDevice::init(Config::get().hostname.c_str());
     NimBLEDevice::setSecurityAuth(true, true, true);
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 

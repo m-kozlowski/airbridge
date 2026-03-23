@@ -3,6 +3,7 @@
 #include "board.h"
 
 struct AirBridgeConfig {
+    String      hostname;
     String      wifi_ssid;
     String      wifi_pass;
     uint8_t     wifi_mode;          // 0=STA, 1=AP, 2=off

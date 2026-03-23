@@ -8,6 +8,7 @@ static Preferences prefs;
 static AirBridgeConfig cfg;
 
 static void apply_defaults() {
+    cfg.hostname = DEFAULT_HOSTNAME;
     cfg.wifi_ssid = "";
     cfg.wifi_pass = "";
     cfg.wifi_mode = 1;                  // AP mode by default
@@ -43,6 +44,7 @@ void Config::init() {
 }
 
 void Config::load() {
+    cfg.hostname        = prefs.getString("hostname", cfg.hostname);
     cfg.wifi_ssid       = prefs.getString("wifi_ssid", cfg.wifi_ssid);
     cfg.wifi_pass       = prefs.getString("wifi_pass", cfg.wifi_pass);
     cfg.wifi_mode       = prefs.getUChar("wifi_mode", cfg.wifi_mode);
@@ -72,6 +74,7 @@ void Config::load() {
 }
 
 void Config::save() {
+    prefs.putString("hostname", cfg.hostname);
     prefs.putString("wifi_ssid", cfg.wifi_ssid);
     prefs.putString("wifi_pass", cfg.wifi_pass);
     prefs.putUChar("wifi_mode", cfg.wifi_mode);
@@ -123,6 +126,7 @@ struct KVEntry {
 #define KV_BOOL(k, f) { k, KVEntry::BOOL, &cfg.f }
 
 static const KVEntry kv_table[] = {
+    KV_STR("hostname", hostname),
     KV_STR("wifi_ssid", wifi_ssid),
     KV_STR("wifi_pass", wifi_pass),
     KV_U8("wifi_mode", wifi_mode),
