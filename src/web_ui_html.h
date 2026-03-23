@@ -53,7 +53,6 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 <div class="tab" onclick="showTab(5)">Console</div>
 <div class="tab" onclick="showTab(6)">Device</div>
 <div class="tab" onclick="showTab(7)">OTA Upload</div>
-<div class="tab" onclick="showTab(8)">Console</div>
 </div>
 
 <!-- STATUS -->
@@ -135,13 +134,12 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 <!-- CONSOLE -->
 <div class="pane" id="p5">
 <div class="card"><h3>Command Console</h3>
-<div style="font-size:12px;color:#888;margin-bottom:8px">Send Q-frame commands (e.g. <code>G S #BID</code>) or $-prefixed internal commands (e.g. <code>$STATUS</code>)</div>
-<div style="display:flex;gap:8px;margin-bottom:8px">
-<input type="text" id="cmdInput" style="flex:1;width:auto;font-family:monospace" placeholder="G S #BID" onkeydown="if(event.key==='Enter')sendCmd()">
+<div id="cmdOutput" style="background:#0a0a1a;border:1px solid #0f3460;border-radius:4px;padding:8px;font-family:monospace;font-size:13px;color:#4ade80;height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:8px"></div>
+<div style="display:flex;gap:8px">
+<input type="text" id="cmdInput" style="flex:1;width:auto;font-family:monospace" placeholder="Enter command ($ prefix for internal, bare for AirSense)" onkeydown="if(event.key==='Enter')sendCmd()">
 <button class="btn" onclick="sendCmd()">Send</button>
-<button class="btn" onclick="clearConsole()" style="background:#555">Clear</button>
 </div>
-<div id="cmdOutput" style="background:#0a0a1a;border:1px solid #0f3460;border-radius:4px;padding:8px;font-family:monospace;font-size:13px;height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></div>
+<div style="font-size:12px;color:#666;margin-top:6px">$STATUS, $CONFIG GET key, $BLE SCAN, G S #BID, P S #ROP 0001</div>
 </div></div>
 
 <!-- DEVICE CONFIG -->
@@ -193,16 +191,6 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 <div class="progress" id="flashProgress" style="display:none"><div class="bar" id="flashBar"></div></div>
 <div id="flashPhase" style="font-size:13px;color:#888;margin-top:4px"></div>
 <div class="msg" id="flashMsg"></div>
-</div></div>
-
-<!-- CONSOLE -->
-<div class="pane" id="p8"><div class="card"><h3>Command Console</h3>
-<div id="consoleOutput" style="background:#111;border-radius:4px;padding:8px;font-family:monospace;font-size:13px;color:#4ade80;height:400px;overflow-y:auto;white-space:pre-wrap;margin-bottom:8px"></div>
-<div style="display:flex;gap:8px">
-<input type="text" id="consoleInput" placeholder="Enter command ($ prefix for internal, bare for AirSense)" style="flex:1;font-family:monospace">
-<button class="btn" onclick="sendConsoleCmd()">Send</button>
-</div>
-<div style="font-size:12px;color:#666;margin-top:6px">$STATUS, $CONFIG GET key, $BLE SCAN, G S #BID, P S #ROP 0001</div>
 </div></div>
 
 <script>
@@ -517,24 +505,30 @@ async function bleAction(action,addr){
 
 const cmdHistory=[];
 let histIdx=-1;
+function cmdLog(text,color){
+  const el=document.getElementById('cmdOutput');
+  const line=document.createElement('span');
+  line.style.color=color||'#4ade80';
+  line.textContent=text+'\n';
+  el.appendChild(line);
+  el.scrollTop=el.scrollHeight;
+}
 async function sendCmd(){
   const inp=document.getElementById('cmdInput');
   const cmd=inp.value.trim();if(!cmd)return;
   cmdHistory.push(cmd);histIdx=cmdHistory.length;
-  const out=document.getElementById('cmdOutput');
-  out.textContent+='> '+cmd+'\n';
   inp.value='';
+  cmdLog('> '+cmd,'#888');
   try{
     const r=await api('/api/cmd',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({cmd})});
     if(!r)return;const d=await r.json();
-    if(d.response) out.textContent+=d.response+'\n';
-    else if(d.ok==='false') out.textContent+='ERROR\n';
-    else out.textContent+='OK\n';
-  }catch(e){out.textContent+='Error: '+e.message+'\n';}
-  out.scrollTop=out.scrollHeight;
+    if(d.error) cmdLog(d.error,'#f87171');
+    else if(d.response) cmdLog(d.response,'#4ade80');
+    else cmdLog('OK','#4ade80');
+  }catch(e){cmdLog('Error: '+e.message,'#f87171');}
 }
-function clearConsole(){document.getElementById('cmdOutput').textContent='';}
+function clearConsole(){document.getElementById('cmdOutput').innerHTML='';}
 document.getElementById('cmdInput').addEventListener('keydown',e=>{
   if(e.key==='ArrowUp'&&cmdHistory.length){histIdx=Math.max(0,histIdx-1);e.target.value=cmdHistory[histIdx]||'';}
   if(e.key==='ArrowDown'){histIdx=Math.min(cmdHistory.length,histIdx+1);e.target.value=cmdHistory[histIdx]||'';}
@@ -761,30 +755,6 @@ function toggleLive(){
   }
 }
 
-function consoleLog(text,color){
-  const el=document.getElementById('consoleOutput');
-  const line=document.createElement('span');
-  line.style.color=color||'#4ade80';
-  line.textContent=text+'\n';
-  el.appendChild(line);
-  el.scrollTop=el.scrollHeight;
-}
-
-async function sendConsoleCmd(){
-  const inp=document.getElementById('consoleInput');
-  const cmd=inp.value.trim();if(!cmd)return;
-  inp.value='';
-  consoleLog('> '+cmd,'#888');
-  try{
-    const r=await api('/api/cmd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd})});
-    if(!r)return;const d=await r.json();
-    consoleLog(d.response||d.error||'(no response)', d.error?'#f87171':'#4ade80');
-  }catch(e){consoleLog('Error: '+e.message,'#f87171');}
-}
-
-document.addEventListener('keydown',e=>{
-  if(e.target.id==='consoleInput'&&e.key==='Enter')sendConsoleCmd();
-});
 
 loadStatus();
 initSSE();
