@@ -1,0 +1,161 @@
+#include <Arduino.h>
+#include "app_config.h"
+#include "debug_log.h"
+#include "uart_arbiter.h"
+#include "tcp_bridge.h"
+#include "ble_oxi.h"
+#include "airbridge_ota.h"
+#include "web_ui.h"
+
+const char *airbridge_version() { return AIRBRIDGE_VERSION; }
+
+extern void dispatch_command(const char *line, String &response);
+
+#define SERIAL_LINE_MAX 256
+static char serial_line[SERIAL_LINE_MAX];
+static int serial_pos = 0;
+
+static void serial_poll() {
+    while (Serial.available()) {
+        char c = Serial.read();
+
+        if (c == '\n' || c == '\r') {
+            if (serial_pos > 0) {
+                serial_line[serial_pos] = '\0';
+
+                if (serial_line[0] == '$') {
+                    // Internal command
+                    String response;
+                    dispatch_command(serial_line + 1, response);
+                    if (response.length() > 0) Serial.print(response);
+                } else {
+                    // Q-frame
+                    char resp_buf[512] = {};
+                    uint16_t resp_len = sizeof(resp_buf);
+                    bool ok = Arbiter::send_cmd(serial_line, CMD_SRC_INTERNAL,
+                                                CMD_PRIO_NORMAL, resp_buf,
+                                                &resp_len, 2000);
+                    if (ok) {
+                        Serial.println(resp_buf);
+                    } else {
+                        Serial.println("ERR:TIMEOUT");
+                    }
+                }
+                serial_pos = 0;
+            }
+        } else if (serial_pos < SERIAL_LINE_MAX - 1) {
+            serial_line[serial_pos++] = c;
+        }
+    }
+}
+
+// Health monitoring: poll ROP every 10s to detect therapy state
+#define HEALTH_POLL_INTERVAL_MS     10000
+#define HEALTH_TIMEOUT_MS           3000
+
+static uint32_t last_health_poll = 0;
+static uint32_t consecutive_timeouts = 0;
+
+static void poll_therapy_state() {
+    char resp[64] = {};
+    uint16_t resp_len = sizeof(resp);
+
+    bool ok = Arbiter::send_cmd("G S #ROP", CMD_SRC_INTERNAL, CMD_PRIO_HIGH,
+                                resp, &resp_len, HEALTH_TIMEOUT_MS);
+    if (ok) {
+        consecutive_timeouts = 0;
+
+        // Parse "G S #ROP = XXXX #"
+        char *eq = strstr(resp, "= ");
+        if (eq) {
+            uint32_t val = strtoul(eq + 2, nullptr, 16);
+            system_state_t current = Arbiter::get_state();
+
+            if (val == 1 && current == SYS_IDLE) {
+                Arbiter::set_state(SYS_THERAPY);
+                Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Therapy started\n");
+                WebUI::push_event("status", "{\"system\":\"THERAPY\"}");
+            } else if (val == 0 && current == SYS_THERAPY) {
+                Arbiter::set_state(SYS_IDLE);
+                Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Therapy ended\n");
+                WebUI::push_event("status", "{\"system\":\"IDLE\"}");
+            }
+        }
+    } else {
+        consecutive_timeouts++;
+        Log::logf(CAT_HEALTH, LOG_WARN, "[HEALTH] ROP poll timeout (%d consecutive)\n", consecutive_timeouts);
+
+        if (consecutive_timeouts >= 3) {
+            system_state_t current = Arbiter::get_state();
+            if (current != SYS_ERROR && current != SYS_TRANSPARENT &&
+                current != SYS_OTA_AIRSENSE && current != SYS_OTA_ESP) {
+                Arbiter::set_state(SYS_ERROR);
+                Log::logf(CAT_HEALTH, LOG_ERROR, "[HEALTH] UART unresponsive, entering ERROR state\n");
+            }
+        }
+    }
+}
+
+static void attempt_recovery() {
+    if (Arbiter::get_state() != SYS_ERROR) return;
+
+    char resp[32] = {};
+    uint16_t resp_len = sizeof(resp);
+
+    bool ok = Arbiter::send_cmd("G S #BLS", CMD_SRC_INTERNAL, CMD_PRIO_HIGH,
+                                resp, &resp_len, 5000);
+    if (ok) {
+        Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Device responded, clearing error\n");
+        consecutive_timeouts = 0;
+        Arbiter::set_state(SYS_IDLE);
+    }
+}
+
+void setup() {
+    Serial.begin(115200);
+    delay(500);
+    while (Serial.available()) Serial.read();  // flush boot garbage
+    Log::init();
+
+    Log::printf("\n=== AirBridge " AIRBRIDGE_VERSION " ===\n");
+    Log::printf("Chip: %s, Heap: %d bytes\n", ESP.getChipModel(), ESP.getFreeHeap());
+
+    Config::init();
+    Config::load();
+    Log::logf(CAT_INIT, LOG_INFO, "[INIT] Config loaded\n");
+
+    Arbiter::init(Serial1, PIN_AS10_RX, PIN_AS10_TX, Config::get().uart_baud);
+    Log::logf(CAT_INIT, LOG_INFO, "[INIT] UART arbiter started\n");
+
+    bool wifi_ok = TcpBridge::wifi_setup();
+
+    TcpBridge::init();
+    Log::logf(CAT_INIT, LOG_INFO, "[INIT] TCP bridge started\n");
+
+    if (wifi_ok) OtaManager::init();
+
+    BleOxi::init();
+    Log::logf(CAT_INIT, LOG_INFO, "[INIT] BLE oximetry started\n");
+
+    Log::logf(CAT_INIT, LOG_INFO, "[INIT] All systems go\n");
+}
+
+void loop() {
+    serial_poll();
+
+    OtaManager::handle();
+
+    // health monitoring
+    if (millis() - last_health_poll >= HEALTH_POLL_INTERVAL_MS) {
+        last_health_poll = millis();
+
+        system_state_t st = Arbiter::get_state();
+        if (st == SYS_IDLE || st == SYS_THERAPY) {
+            poll_therapy_state();
+        } else if (st == SYS_ERROR) {
+            attempt_recovery();
+        }
+    }
+
+    delay(10);
+}

@@ -1,0 +1,77 @@
+#pragma once
+#include <Arduino.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
+#include "qframe.h"
+
+typedef enum {
+    CMD_SRC_OXI,
+    CMD_SRC_TCP,
+    CMD_SRC_INTERNAL,
+    CMD_SRC_OTA,
+} cmd_source_t;
+
+typedef enum {
+    CMD_PRIO_LOW      = 0,   // oximetry feed, status polls
+    CMD_PRIO_NORMAL   = 1,   // TCP client commands
+    CMD_PRIO_HIGH     = 2,   // safety queries, session detect
+    CMD_PRIO_CRITICAL = 3,   // OTA (exclusive)
+} cmd_priority_t;
+
+typedef enum {
+    SYS_IDLE,
+    SYS_THERAPY,
+    SYS_BOOTLOADER,
+    SYS_OTA_ESP,
+    SYS_OTA_AIRSENSE,
+    SYS_TRANSPARENT,
+    SYS_ERROR,
+} system_state_t;
+
+typedef struct {
+    cmd_source_t    source;
+    cmd_priority_t  priority;
+    uint8_t         frame[QFRAME_MAX_RAW];
+    uint16_t        frame_len;
+    uint32_t        ticket_id;
+    uint16_t        timeout_ms;
+
+    uint8_t         resp_payload[QFRAME_MAX_PAYLOAD];
+    uint16_t        resp_len;
+    uint8_t         resp_type;
+    bool            success;
+    bool            timed_out;
+
+    SemaphoreHandle_t done;
+} uart_ticket_t;
+
+namespace Arbiter {
+    void init(HardwareSerial &serial, int rx_pin, int tx_pin, uint32_t baud);
+
+    bool send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
+                  char *resp_buf, uint16_t *resp_len,
+                  uint16_t timeout_ms = 2000);
+
+    bool submit(uart_ticket_t *ticket);
+
+    system_state_t get_state();
+    void set_state(system_state_t state);
+
+    void enter_transparent(Stream *bridge);
+    void exit_transparent();
+
+    void write_raw(const uint8_t *data, size_t len);
+
+    bool wait_frame(qframe_t *out, uint16_t timeout_ms);
+
+    void set_baud(uint32_t baud);
+    uint32_t get_baud();
+
+    // BDD key (0=57600, 1=115200, 2=460800)
+    uint32_t bdd_key_to_baud(uint16_t key);
+
+    uint32_t get_tx_count();
+    uint32_t get_rx_count();
+    uint32_t get_timeout_count();
+    uint32_t get_error_count();
+}

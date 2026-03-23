@@ -1,0 +1,314 @@
+#include "tcp_bridge.h"
+#include "uart_arbiter.h"
+#include "debug_log.h"
+#include "web_ui.h"
+#include "app_config.h"
+#include <WiFi.h>
+#include <WiFiServer.h>
+#include <WiFiClient.h>
+
+extern const char *airbridge_version();
+
+extern void dispatch_command(const char *line, String &response);
+
+static WiFiServer *server = nullptr;
+static WiFiClient client;
+static TaskHandle_t tcp_task_handle = nullptr;
+
+#define TCP_TASK_STACK  6144
+#define TCP_TASK_PRIO   3
+#define TCP_LINE_MAX    512
+
+static char line_buf[TCP_LINE_MAX];
+static int line_pos = 0;
+
+
+bool TcpBridge::wifi_setup() {
+    auto &cfg = Config::get();
+
+    if (cfg.wifi_mode == 2) {
+        WiFi.mode(WIFI_OFF);
+        return false;
+    }
+
+    WiFi.setHostname(DEFAULT_HOSTNAME);
+
+    if (cfg.wifi_mode == 0 && cfg.wifi_ssid.length() > 0) {
+
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(cfg.wifi_ssid.c_str(), cfg.wifi_pass.c_str());
+        Log::logf(CAT_TCP, LOG_INFO, "[TCP] Connecting to WiFi '%s'...\n", cfg.wifi_ssid.c_str());
+
+        int attempts = 0;
+        while (WiFi.status() != WL_CONNECTED && attempts < 30) {
+            delay(500);
+            Log::logf(CAT_TCP, LOG_DEBUG, ".");
+            attempts++;
+        }
+        if (WiFi.status() == WL_CONNECTED) {
+            Log::logf(CAT_TCP, LOG_INFO, "\n[TCP] Connected: %s\n", WiFi.localIP().toString().c_str());
+            return true;
+        } else {
+            Log::logf(CAT_TCP, LOG_WARN, "\n[TCP] STA connect failed, falling back to AP\n");
+            cfg.wifi_mode = 1;  // fallback
+        }
+    }
+
+    if (cfg.wifi_mode == 1) {
+
+        WiFi.mode(WIFI_AP);
+        String ap_ssid = String(DEFAULT_HOSTNAME) + "_" +
+                         String((uint32_t)ESP.getEfuseMac(), HEX);
+        WiFi.softAP(ap_ssid.c_str(), "airbridge");
+        delay(100);  // let lwIP finish AP setup
+        Log::logf(CAT_TCP, LOG_INFO, "[TCP] AP mode: SSID=%s IP=%s\n",
+                    ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
+        return true;
+    }
+
+    // wifi_mode 0 but no SSID configured
+    WiFi.mode(WIFI_AP);
+    String ap_ssid = String(DEFAULT_HOSTNAME) + "_" +
+                     String((uint32_t)ESP.getEfuseMac(), HEX);
+    WiFi.softAP(ap_ssid.c_str(), "airbridge");
+    delay(100);
+    Log::logf(CAT_TCP, LOG_WARN, "[TCP] No SSID configured, AP fallback: %s IP=%s\n",
+                ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
+    return true;
+}
+
+static void handle_line(const char *line) {
+    if (line[0] == '\0') return;
+
+    String response;
+
+    if (line[0] == '$') {
+        // Internal command
+        dispatch_command(line + 1, response);
+    } else if (strcmp(line, "$TRANSPARENT") == 0 || strcmp(line, "TRANSPARENT") == 0) {
+        // Should not reach here since $ is stripped above, but handle both forms
+        response = "ERR: use $TRANSPARENT\n";
+    } else {
+        // Forward as Q-frame
+        char resp_buf[QFRAME_MAX_PAYLOAD + 1] = {};
+        uint16_t resp_len = sizeof(resp_buf);
+
+        bool ok = Arbiter::send_cmd(line, CMD_SRC_TCP, CMD_PRIO_NORMAL,
+                                    resp_buf, &resp_len,
+                                    Config::get().uart_cmd_timeout_ms);
+
+        if (ok) {
+            if (resp_len >= 2 && resp_buf[resp_len-1] == '#' && resp_buf[resp_len-2] == ' ') {
+                resp_buf[resp_len-2] = '\0';
+                resp_len -= 2;
+            }
+            response = String(resp_buf) + "\n";
+        } else {
+            response = "ERR:TIMEOUT\n";
+        }
+    }
+
+    if (client.connected() && response.length() > 0) {
+        client.print(response);
+    }
+}
+
+static void handle_transparent() {
+    auto &cfg = Config::get();
+    system_state_t st = Arbiter::get_state();
+
+    if (st == SYS_THERAPY && !cfg.allow_transparent_during_therapy) {
+        client.println("ERR: transparent mode blocked during therapy");
+        return;
+    }
+
+    client.println("OK: entering transparent mode (idle timeout 5s)");
+    Arbiter::enter_transparent(&client);
+
+    static const uint32_t TRANSPARENT_IDLE_TIMEOUT = 5000;
+    uint32_t last_activity = millis();
+
+    while (client.connected() && Arbiter::get_state() == SYS_TRANSPARENT) {
+        // TCP -> UART
+        if (client.available()) {
+            uint8_t buf[256];
+            int n = client.readBytes(buf, min(client.available(), (int)sizeof(buf)));
+            if (n > 0) {
+                Arbiter::write_raw(buf, n);
+                last_activity = millis();
+            }
+        }
+
+        // UART -> TCP handled by rx_task via transparent_bridge
+
+        if (millis() - last_activity > TRANSPARENT_IDLE_TIMEOUT) {
+            break;
+        }
+
+        vTaskDelay(1);
+    }
+
+    Arbiter::exit_transparent();
+    if (client.connected()) {
+        client.println("OK: transparent mode exited");
+    }
+}
+
+
+#define DEBUG_MAX_CLIENTS 3
+
+static WiFiServer *debug_server = nullptr;
+static WiFiClient debug_clients[DEBUG_MAX_CLIENTS];
+
+// Print adapter that writes to all connected debug clients
+class DebugPrint : public Print {
+public:
+    size_t write(uint8_t c) override { return write(&c, 1); }
+    size_t write(const uint8_t *buf, size_t len) override {
+        size_t written = 0;
+        for (int i = 0; i < DEBUG_MAX_CLIENTS; i++) {
+            if (debug_clients[i] && debug_clients[i].connected()) {
+                debug_clients[i].write(buf, len);
+                written = len;
+            }
+        }
+        return written;
+    }
+};
+
+static DebugPrint debug_print;
+static bool debug_registered = false;
+
+void TcpBridge::init_debug_server(uint16_t port) {
+    if (port == 0) return;
+    debug_server = new WiFiServer(port);
+    debug_server->begin();
+    debug_server->setNoDelay(true);
+    Log::add_output(&debug_print);
+    debug_registered = true;
+    Log::logf(CAT_DBG, LOG_INFO, "[DBG] Debug server on port %d\n", port);
+}
+
+void TcpBridge::poll_debug_clients() {
+    if (!debug_server) return;
+
+    WiFiClient nc = debug_server->available();
+    if (nc) {
+        int slot = -1;
+        for (int i = 0; i < DEBUG_MAX_CLIENTS; i++) {
+            if (!debug_clients[i] || !debug_clients[i].connected()) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot >= 0) {
+            debug_clients[slot] = nc;
+            debug_clients[slot].setNoDelay(true);
+            Log::logf(CAT_DBG, LOG_DEBUG, "[DBG] Debug client %d connected from %s\n",
+                        slot, nc.remoteIP().toString().c_str());
+        } else {
+            nc.println("ERR: max debug clients");
+            nc.stop();
+        }
+    }
+
+    // Drain any input from debug clients (read-only port)
+    for (int i = 0; i < DEBUG_MAX_CLIENTS; i++) {
+        if (debug_clients[i] && debug_clients[i].connected()) {
+            while (debug_clients[i].available()) debug_clients[i].read();
+        }
+    }
+}
+
+void TcpBridge::task(void *param) {
+    auto &cfg = Config::get();
+
+    if (cfg.wifi_mode == 2) {
+        Log::logf(CAT_TCP, LOG_WARN, "[TCP] WiFi disabled, TCP bridge not starting\n");
+        vTaskDelete(nullptr);
+        return;
+    }
+
+    server = new WiFiServer(cfg.tcp_port);
+    server->begin();
+    server->setNoDelay(true);
+    Log::logf(CAT_TCP, LOG_INFO, "[TCP] Listening on port %d\n", cfg.tcp_port);
+
+    if (cfg.debug_port > 0 && cfg.debug_port != cfg.tcp_port) {
+        init_debug_server(cfg.debug_port);
+    }
+
+    if (cfg.http_port > 0 && cfg.http_port != cfg.tcp_port) {
+        WebUI::init(cfg.http_port);
+    }
+
+    while (true) {
+        if (!client || !client.connected()) {
+            WiFiClient newClient = server->available();
+            if (newClient) {
+                client = newClient;
+                client.setNoDelay(true);
+                line_pos = 0;
+                Log::logf(CAT_TCP, LOG_INFO, "[TCP] Client connected from %s\n",
+                            client.remoteIP().toString().c_str());
+                client.printf("AirBridge %s\n", airbridge_version());
+            }
+        }
+
+        if (!client || !client.connected()) {
+            poll_debug_clients();
+            WebUI::handle();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+
+        while (client.available()) {
+            char c = client.read();
+
+            if (c == '\n' || c == '\r') {
+                if (line_pos > 0) {
+                    line_buf[line_pos] = '\0';
+
+                    if (strcasecmp(line_buf, "$TRANSPARENT") == 0) {
+                        handle_transparent();
+                    } else {
+                        handle_line(line_buf);
+                    }
+                    line_pos = 0;
+                }
+            } else if (line_pos < TCP_LINE_MAX - 1) {
+                line_buf[line_pos++] = c;
+            }
+        }
+
+        poll_debug_clients();
+        WebUI::handle();
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+}
+
+void TcpBridge::init() {
+    xTaskCreatePinnedToCore(TcpBridge::task, "tcp_srv", TCP_TASK_STACK,
+                            nullptr, TCP_TASK_PRIO, &tcp_task_handle, 0);
+}
+
+bool TcpBridge::has_client() {
+    return client && client.connected();
+}
+
+void TcpBridge::send_to_client(const char *msg) {
+    if (client && client.connected()) {
+        client.print(msg);
+    }
+}
+
+void TcpBridge::send_to_client(const uint8_t *data, size_t len) {
+    if (client && client.connected()) {
+        client.write(data, len);
+    }
+}
+
+void TcpBridge::respond(const String &msg) {
+    send_to_client(msg.c_str());
+}
