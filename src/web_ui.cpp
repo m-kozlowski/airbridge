@@ -950,6 +950,8 @@ void WebUI::init(uint16_t port) {
     http->on("/api/flash/cancel", HTTP_POST, handleFlashCancel);
     http->on("/api/reboot", HTTP_POST, handleReboot);
 
+    DefaultHeaders::Instance().addHeader("Cache-Control", "no-store");
+
     http->begin();
     Log::logf(CAT_WEB, LOG_INFO, "[WEB] HTTP server on port %d\n", port);
 }
