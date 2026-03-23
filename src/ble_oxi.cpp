@@ -285,7 +285,20 @@ void BleOxi::task(void *param) {
                             }
                         }
                     } else {
-                        found = true;
+                        // No configured address - auto-connect to first found,
+                        // but skip unbonded Nonin (needs 2-min pairing window)
+                        for (int i = 0; i < scan_result_count; i++) {
+                            if (scan_results[i].name.startsWith("Nonin")) {
+                                NimBLEAddress ba(std::string(scan_results[i].addr.c_str()), scan_results[i].addr_type);
+                                if (NimBLEDevice::isBonded(ba)) {
+                                    found = true;
+                                    break;
+                                }
+                            } else {
+                                found = true;
+                                break;
+                            }
+                        }
                     }
                     if (found) connect_requested = true;
                 }
@@ -356,8 +369,12 @@ void BleOxi::task(void *param) {
                         set_state(OXI_DISCONNECTED);
                     }
                 } else {
-                    Log::logf(CAT_BLE, LOG_WARN, "[BLE] Connect failed, err=%d\n",
-                               pClient->getLastError());
+                    int err = pClient->getLastError();
+                    if (err == 13) {  // BLE_HS_EDONE
+                        Log::logf(CAT_BLE, LOG_WARN, "[BLE] Connect rejected (EDONE) - device may need power cycle for pairing window\n");
+                    } else {
+                        Log::logf(CAT_BLE, LOG_WARN, "[BLE] Connect failed, err=%d\n", err);
+                    }
                     set_state(OXI_DISCONNECTED);
                 }
             }

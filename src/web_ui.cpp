@@ -742,6 +742,11 @@ static void handleBleAction(AsyncWebServerRequest *request) {
                 deleted = (NimBLEDevice::getNumBonds() == 0);
             }
             */
+            if (deleted && strcasecmp(addr.c_str(), Config::get().oxi_device_addr.c_str()) == 0) {
+                Config::set_value("oxi_device_addr", "");
+                Config::save();
+                Log::logf(CAT_BLE, LOG_INFO, "[BLE] Cleared oxi_device_addr (matched deleted bond)\n");
+            }
             result = deleted ? "bond deleted" : "bond not found";
         } else {
             result = "no address specified";
@@ -761,6 +766,11 @@ static void handleBleAction(AsyncWebServerRequest *request) {
             remaining = NimBLEDevice::getNumBonds();
         }
         Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] After delete: %d bonds remain\n", remaining);
+        if (remaining == 0 && Config::get().oxi_device_addr.length() > 0) {
+            Config::set_value("oxi_device_addr", "");
+            Config::save();
+            Log::logf(CAT_BLE, LOG_INFO, "[BLE] Cleared oxi_device_addr\n");
+        }
         result = remaining == 0 ? "all bonds deleted" : "delete failed";
         ok = true;
     }
