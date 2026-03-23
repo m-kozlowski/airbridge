@@ -15,6 +15,7 @@ extern "C" {
 }
 
 extern const char *airbridge_version();
+extern const char *airbridge_build_date();
 
 static AsyncWebServer *http = nullptr;
 static AsyncEventSource *events = nullptr;
@@ -139,6 +140,7 @@ static void handleStatus(AsyncWebServerRequest *request) {
 
     String json = "{";
     jsonAddString(json, "version", airbridge_version(), false);
+    jsonAddString(json, "built", airbridge_build_date());
     jsonAddString(json, "system", state_names[sys]);
     jsonAddInt(json, "rop", rop);
     jsonAddString(json, "oxi", oxi_names[oxi]);

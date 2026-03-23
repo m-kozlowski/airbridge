@@ -131,6 +131,7 @@ void dispatch_command(const char *line, String &response) {
 
     if (upper == "VERSION") {
         response = "AirBridge " + String(AIRBRIDGE_VERSION) + "\n";
+        response += "Built: " + String(AIRBRIDGE_BUILD_DATE) + "\n";
         response += "ESP32 SDK: " + String(ESP.getSdkVersion()) + "\n";
         response += "Chip: " + String(ESP.getChipModel()) + " rev" + String(ESP.getChipRevision()) + "\n";
         response += "Flash: " + String(ESP.getFlashChipSize() / 1024) + "KB\n";

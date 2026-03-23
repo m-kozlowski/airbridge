@@ -8,6 +8,7 @@
 #include "web_ui.h"
 
 const char *airbridge_version() { return AIRBRIDGE_VERSION; }
+const char *airbridge_build_date() { return AIRBRIDGE_BUILD_DATE; }
 
 extern void dispatch_command(const char *line, String &response);
 
