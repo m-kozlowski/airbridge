@@ -2,6 +2,7 @@
 #include "uart_arbiter.h"
 #include "qframe.h"
 #include "debug_log.h"
+#include "app_config.h"
 #include <esp_partition.h>
 
 #define FLASH_TASK_STACK    8192
@@ -513,6 +514,7 @@ static void flash_task(void *param) {
         if (app_running) {
             strncpy(flash_phase, "Complete", sizeof(flash_phase));
             Log::logf(CAT_OTA, LOG_INFO, "[OTA] Flash complete, device running\n");
+            Config::invalidate_device_info();
         } else if (!flash_cancel) {
             snprintf(flash_error, sizeof(flash_error),
                      "Device did not return to app after flash");

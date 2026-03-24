@@ -109,6 +109,7 @@ static void attempt_recovery() {
         Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Device responded, clearing error\n");
         consecutive_timeouts = 0;
         Arbiter::set_state(SYS_IDLE);
+        Config::invalidate_device_info();
     }
 }
 

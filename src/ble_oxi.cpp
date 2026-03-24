@@ -146,6 +146,7 @@ class OxiClientCB : public NimBLEClientCallbacks {
         reading.spo2 = -1;
         reading.pulse_bpm = -1;
         reading.valid = false;
+        feeding = false;
         if (state == OXI_STREAMING || state == OXI_BONDING) {
             set_state(OXI_DISCONNECTED);
         }

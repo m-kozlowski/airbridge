@@ -216,18 +216,11 @@ function initSSE(){
   });
   evtSrc.onerror=()=>{setTimeout(initSSE,3000);};
 }
+let lastStatus={};
 function updateStatusFromPush(d){
-  const g=document.getElementById('statusGrid');if(!g)return;
-  for(const[k,v]of Object.entries(d)){
-    let el=g.querySelector(`[data-key="${k}"]`);
-    if(el){el.querySelector('.v').textContent=v;}
-    else{
-      const div=document.createElement('div');div.className='stat';div.dataset.key=k;
-      div.innerHTML=`<span class="k">${k}:</span> <span class="v">${v}</span>`;
-      g.appendChild(div);
-    }
-  }
-  if(d.version)document.getElementById('ver').textContent=d.version;
+  // Merge push data into cached status and re-render
+  Object.assign(lastStatus,d);
+  renderStatus(lastStatus);
 }
 function updateBleFromPush(d){
   const p=document.getElementById('p4');
@@ -275,30 +268,37 @@ async function api(url,opts){
 
 const ROP_NAMES={0:'Standby',1:'Normal',2:'Power Recovery',3:'Power Save',4:'Calibration',5:'Upgrade'};
 
+function renderStatus(d){
+  const g=document.getElementById('statusGrid');if(!g||!d.version)return;
+  g.innerHTML='';
+  const rop=ROP_NAMES[d.rop]||('Unknown ('+d.rop+')');
+  const oxiFeed=d.oxi+(d.feeding==='yes'?' / Feeding':'');
+  const spo2=d.spo2>=0?d.spo2+'%':'--';
+  const pulse=d.pulse>=0?d.pulse+' bpm':'--';
+  const rows=[
+    ['Version',d.version,'Built',d.built],
+    ['System',d.system,'Device State',rop],
+    ['Product',d.pna||'--','Serial',d.srn||'--'],
+    ['Oximeter',oxiFeed,'Feeding',d.feeding||'--'],
+    ['SpO2',spo2,'Pulse',pulse],
+  ];
+  rows.forEach(([k1,v1,k2,v2])=>{
+    let html=`<div class="stat"><span class="k">${k1}:</span> <span class="v">${v1}</span></div>`;
+    if(k2) html+=`<div class="stat"><span class="k">${k2}:</span> <span class="v">${v2}</span></div>`;
+    g.innerHTML+=html;
+  });
+  if(d.version)document.getElementById('ver').textContent=d.version;
+  const tb=document.getElementById('btnTherapy');
+  if(d.rop===1){tb.textContent='Stop Therapy';tb.onclick=()=>ropCmd('standby');}
+  else{tb.textContent='Start Therapy';tb.onclick=()=>ropCmd('start');}
+}
+
 async function loadStatus(){
-  const sp=document.getElementById('statusSpinner');sp.style.display='block';
   try{
     const r=await api('/api/status');if(!r)return;
-    const d=await r.json();
-    const g=document.getElementById('statusGrid');g.innerHTML='';
-    const labels={version:'Version',system:'System',rop:'Device State',oxi:'Oximeter',
-      spo2:'SpO2',pulse:'Pulse',feeding:'Feeding',uart_baud:'Baud',
-      uart_tx:'TX Count',uart_rx:'RX Count',uart_timeout:'Timeouts',uart_error:'Errors',heap:'Free Heap'};
-    for(const[k,v]of Object.entries(d)){
-      let display=v;
-      if(k==='rop') display=ROP_NAMES[v]||('Unknown ('+v+')');
-      if(k==='spo2'&&v>=0) display=v+'%';
-      if(k==='pulse'&&v>=0) display=v+' bpm';
-      if(k==='heap') display=Math.round(v/1024)+' KB';
-      const label=labels[k]||k;
-      g.innerHTML+=`<div class="stat" data-key="${k}"><span class="k">${label}:</span> <span class="v">${display}</span></div>`;
-    }
-    if(d.version)document.getElementById('ver').textContent=d.version;
-    const tb=document.getElementById('btnTherapy');
-    if(d.rop===1){tb.textContent='Stop Therapy';tb.onclick=()=>ropCmd('standby');}
-    else{tb.textContent='Start Therapy';tb.onclick=()=>ropCmd('start');}
+    lastStatus=await r.json();
+    renderStatus(lastStatus);
   }catch(e){console.error(e);}
-  sp.style.display='none';
 }
 
 async function ropCmd(action){

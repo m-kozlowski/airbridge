@@ -138,20 +138,20 @@ static void handleStatus(AsyncWebServerRequest *request) {
     int rop = -1;
     readSetting("ROP", rop);
 
+    Config::refresh_device_info();
+    auto &cfg = Config::get();
+
     String json = "{";
     jsonAddString(json, "version", airbridge_version(), false);
     jsonAddString(json, "built", airbridge_build_date());
     jsonAddString(json, "system", state_names[sys]);
     jsonAddInt(json, "rop", rop);
+    jsonAddString(json, "pna", cfg.device_pna.c_str());
+    jsonAddString(json, "srn", cfg.device_srn.c_str());
     jsonAddString(json, "oxi", oxi_names[oxi]);
+    jsonAddString(json, "feeding", BleOxi::is_feeding() ? "yes" : "no");
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
-    jsonAddString(json, "feeding", BleOxi::is_feeding() ? "yes" : "no");
-    jsonAddInt(json, "uart_baud", Arbiter::get_baud());
-    jsonAddInt(json, "uart_tx", Arbiter::get_tx_count());
-    jsonAddInt(json, "uart_rx", Arbiter::get_rx_count());
-    jsonAddInt(json, "uart_timeout", Arbiter::get_timeout_count());
-    jsonAddInt(json, "uart_error", Arbiter::get_error_count());
     jsonAddInt(json, "heap", ESP.getFreeHeap());
     json += '}';
 

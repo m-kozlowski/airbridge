@@ -28,7 +28,12 @@ void dispatch_command(const char *line, String &response) {
         oxi_state_t oxi = BleOxi::get_state();
         const oxi_reading_t &r = BleOxi::get_reading();
 
+        Config::refresh_device_info();
+        auto &cfg = Config::get();
+
         response = "system: " + String(state_names[sys]) + "\n";
+        if (!cfg.device_pna.isEmpty())
+            response += "device: " + cfg.device_pna + " (" + cfg.device_srn + ")\n";
         response += "oxi: " + String(oxi_state_names[oxi]) + "\n";
         if (r.valid) {
             response += "spo2: " + String(r.spo2) + "%\n";

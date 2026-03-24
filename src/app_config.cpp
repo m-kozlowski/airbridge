@@ -1,4 +1,5 @@
 #include "app_config.h"
+#include "uart_arbiter.h"
 #include <Preferences.h>
 
 #define CFG_DEFAULT_TCP_PORT    23
@@ -111,6 +112,44 @@ void Config::reset_defaults() {
 
 AirBridgeConfig& Config::get() {
     return cfg;
+}
+
+static String parse_response_str(const char *resp) {
+    const char *eq = strstr(resp, "= ");
+    if (!eq) return "";
+    String val = eq + 2;
+    int end = val.indexOf(" #");
+    if (end > 0) val = val.substring(0, end);
+    val.trim();
+    return val;
+}
+
+void Config::refresh_device_info() {
+    char resp[64] = {};
+    uint16_t len;
+
+    if (cfg.device_pna.isEmpty()) {
+        len = sizeof(resp);
+        memset(resp, 0, sizeof(resp));
+        if (Arbiter::send_cmd("G S #PNA", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
+                               resp, &len, 2000)) {
+            cfg.device_pna = parse_response_str(resp);
+        }
+    }
+
+    if (cfg.device_srn.isEmpty()) {
+        len = sizeof(resp);
+        memset(resp, 0, sizeof(resp));
+        if (Arbiter::send_cmd("G S #SRN", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
+                               resp, &len, 2000)) {
+            cfg.device_srn = parse_response_str(resp);
+        }
+    }
+}
+
+void Config::invalidate_device_info() {
+    cfg.device_pna = "";
+    cfg.device_srn = "";
 }
 
 struct KVEntry {

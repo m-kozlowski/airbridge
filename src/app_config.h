@@ -31,6 +31,10 @@ struct AirBridgeConfig {
     String      ota_password;
 
     uint8_t     mitm_mode;          // 0=off, 1=forward, 2=log, 3=filter
+
+    // Runtime cache
+    String      device_pna;         // #PNA
+    String      device_srn;         // #SRN
 };
 
 namespace Config {
@@ -43,6 +47,9 @@ namespace Config {
 
     bool get_value(const char *key, String &out);
     bool set_value(const char *key, const char *value);
+
+    void refresh_device_info();
+    void invalidate_device_info();
 
     String dump();
 }
