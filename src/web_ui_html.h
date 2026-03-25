@@ -265,6 +265,7 @@ function updateChartsFromPush(d){
 function showTab(n){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
   document.querySelectorAll('.pane').forEach((p,i)=>p.classList.toggle('active',i===n));
+  window.location.hash='t'+n;
   if(n===0) loadStatus();
   if(n===1) loadReport();
   if(n>=2&&n<=4&&!settings.length) loadSettings();
@@ -788,7 +789,8 @@ function toggleLive(){
 }
 
 
-loadStatus();
+const ht=window.location.hash.match(/^#t(\d+)$/);
+showTab(ht?parseInt(ht[1]):0);
 initSSE();
 </script>
 </body></html>)rawhtml";
