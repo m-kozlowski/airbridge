@@ -46,13 +46,14 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 <div class="hdr"><h1>AirBridge</h1><span class="ver" id="ver"></span></div>
 <div class="tabs">
 <div class="tab active" onclick="showTab(0)">Status</div>
-<div class="tab" onclick="showTab(1)">Patient</div>
-<div class="tab" onclick="showTab(2)">Clinical</div>
-<div class="tab" onclick="showTab(3)">Climate</div>
-<div class="tab" onclick="showTab(4)">Bluetooth</div>
-<div class="tab" onclick="showTab(5)">Console</div>
-<div class="tab" onclick="showTab(6)">Device</div>
-<div class="tab" onclick="showTab(7)">OTA Upload</div>
+<div class="tab" onclick="showTab(1)">Sleep Report</div>
+<div class="tab" onclick="showTab(2)">Patient</div>
+<div class="tab" onclick="showTab(3)">Clinical</div>
+<div class="tab" onclick="showTab(4)">Climate</div>
+<div class="tab" onclick="showTab(5)">Bluetooth</div>
+<div class="tab" onclick="showTab(6)">Console</div>
+<div class="tab" onclick="showTab(7)">Device</div>
+<div class="tab" onclick="showTab(8)">OTA Upload</div>
 </div>
 
 <!-- STATUS -->
@@ -80,8 +81,20 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div>
 </div></div>
 
+<!-- SLEEP REPORT -->
+<div class="pane" id="p1">
+<div class="card"><h3>Last Session</h3>
+<div class="spinner" id="reportSpinner"></div>
+<div id="sessionGrid" class="status-grid"></div>
+</div>
+<div class="card"><h3>Summary</h3>
+<div id="summaryGrid" class="status-grid"></div>
+</div>
+<div class="btn-row"><button class="btn" onclick="loadReport()">Refresh</button></div>
+</div>
+
 <!-- PATIENT -->
-<div class="pane" id="p1"><div class="card"><h3>Patient Settings</h3>
+<div class="pane" id="p2"><div class="card"><h3>Patient Settings</h3>
 <div class="spinner" id="patientSpinner"></div>
 <div id="patientFields"></div>
 <div class="btn-row"><button class="btn" onclick="saveSettings('patient')">Save</button></div>
@@ -89,7 +102,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div></div>
 
 <!-- CLINICAL -->
-<div class="pane" id="p2"><div class="card"><h3>Therapy Mode</h3>
+<div class="pane" id="p3"><div class="card"><h3>Therapy Mode</h3>
 <div id="modeField"></div></div>
 <div class="card"><h3>Mode Settings</h3>
 <div class="spinner" id="clinicalSpinner"></div>
@@ -102,7 +115,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div>
 
 <!-- CLIMATE -->
-<div class="pane" id="p3"><div class="card"><h3>Climate Control</h3>
+<div class="pane" id="p4"><div class="card"><h3>Climate Control</h3>
 <div class="spinner" id="climateSpinner"></div>
 <div id="climateFields"></div>
 <div class="btn-row"><button class="btn" onclick="saveSettings('climate')">Save</button></div>
@@ -110,7 +123,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div></div>
 
 <!-- BLUETOOTH -->
-<div class="pane" id="p4">
+<div class="pane" id="p5">
 <div class="card"><h3>Oximeter Status</h3>
 <div class="status-grid" id="bleStatusGrid"></div>
 <div class="btn-row" style="display:flex;gap:8px;justify-content:flex-end">
@@ -132,7 +145,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div></div>
 
 <!-- CONSOLE -->
-<div class="pane" id="p5">
+<div class="pane" id="p6">
 <div class="card"><h3>Command Console</h3>
 <div id="cmdOutput" style="background:#0a0a1a;border:1px solid #0f3460;border-radius:4px;padding:8px;font-family:monospace;font-size:13px;color:#4ade80;height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:8px"></div>
 <div style="display:flex;gap:8px">
@@ -143,7 +156,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div></div>
 
 <!-- DEVICE CONFIG -->
-<div class="pane" id="p6"><div class="card"><h3>Device Configuration</h3>
+<div class="pane" id="p7"><div class="card"><h3>Device Configuration</h3>
 <div class="spinner" id="configSpinner"></div>
 <div id="configFields"></div>
 <div class="btn-row"><button class="btn" onclick="saveConfig()">Save & Persist</button></div>
@@ -156,7 +169,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 </div></div>
 
 <!-- OTA UPLOAD -->
-<div class="pane" id="p7"><div class="card"><h3>ResMed Firmware Upload</h3>
+<div class="pane" id="p8"><div class="card"><h3>ResMed Firmware Upload</h3>
 <div class="upload-area" id="dropZone">
 <p>Drag &amp; drop firmware file here, or click to browse</p>
 <input type="file" id="fileInput" style="display:none" accept=".bin,.img,.dat">
@@ -253,11 +266,12 @@ function showTab(n){
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
   document.querySelectorAll('.pane').forEach((p,i)=>p.classList.toggle('active',i===n));
   if(n===0) loadStatus();
-  if(n>=1&&n<=3&&!settings.length) loadSettings();
-  if(n===4) loadBle();
-  if(n===5) document.getElementById('cmdInput').focus();
-  if(n===6&&!document.getElementById('configFields').children.length) loadConfig();
-  if(n===7) checkFlashReady();
+  if(n===1) loadReport();
+  if(n>=2&&n<=4&&!settings.length) loadSettings();
+  if(n===5) loadBle();
+  if(n===6) document.getElementById('cmdInput').focus();
+  if(n===7&&!document.getElementById('configFields').children.length) loadConfig();
+  if(n===8) checkFlashReady();
 }
 
 async function api(url,opts){
@@ -308,6 +322,24 @@ async function ropCmd(action){
       body:JSON.stringify({cmd:cmds[action]})});
     if(r){setTimeout(loadStatus,1000);}
   }catch(e){console.error(e);}
+}
+
+async function loadReport(){
+  const sp=document.getElementById('reportSpinner');if(sp)sp.style.display='block';
+  try{
+    const r=await api('/api/report');if(!r)return;
+    const data=await r.json();
+    const sg=document.getElementById('sessionGrid');sg.innerHTML='';
+    const ug=document.getElementById('summaryGrid');ug.innerHTML='';
+    data.forEach(v=>{
+      if(v.raw<0) return;
+      const target=v.section==='summary'?ug:sg;
+      target.innerHTML+=`<div class="stat"><span class="k">${v.label}:</span> <span class="v">${v.value} ${v.unit}</span></div>`;
+    });
+    if(!sg.children.length) sg.innerHTML='<div class="stat"><span class="k">No session data</span></div>';
+    if(!ug.children.length) ug.innerHTML='<div class="stat"><span class="k">No summary data</span></div>';
+  }catch(e){console.error(e);}
+  if(sp)sp.style.display='none';
 }
 
 function renderField(s){

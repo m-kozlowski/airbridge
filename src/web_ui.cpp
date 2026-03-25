@@ -920,6 +920,123 @@ static void handleFlashCancel(AsyncWebServerRequest *request) {
 }
 
 
+struct report_var_t {
+    const char *cmd;
+    const char *label;
+    int scale_div;      // 0 = raw int, -60 = raw minutes -> hours
+    int decimals;
+    const char *unit;
+    const char *section;  // "session" or "summary"
+};
+
+#define RPT_SESSION "session"
+#define RPT_SUMMARY "summary"
+
+static const report_var_t REPORT_VARS[] = {
+    // LAST SESSION
+    {"UQD", "Usage", -61, 0, "", RPT_SESSION},              {"OND", "Mask On Duration", -61, 0, "", RPT_SESSION},
+    {"AQD", "Events/hr", 10, 1, "/hr", RPT_SESSION},        {"MSP", "Median Pressure", 50, 1, "cmH2O", RPT_SESSION},
+    {"AIS", "AI (All)", 10, 1, "/hr", RPT_SESSION},          {"PM9", "Pressure P95", 50, 1, "cmH2O", RPT_SESSION},
+    {"OPI", "Obstructive AI", 10, 1, "/hr", RPT_SESSION},    {"PMA", "Max Pressure", 50, 1, "cmH2O", RPT_SESSION},
+    {"CLI", "Central AI", 10, 1, "/hr", RPT_SESSION},        {"AEP", "Avg EPR Pressure", 50, 1, "cmH2O", RPT_SESSION},
+    {"HIS", "Hypopnea Index", 10, 1, "/hr", RPT_SESSION},    {"LKM", "Leak Median", 50, 2, "L/s", RPT_SESSION},
+    {"UAI", "Unknown AI", 10, 1, "/hr", RPT_SESSION},        {"LK9", "Leak P95", 50, 2, "L/s", RPT_SESSION},
+    {"RIN", "RERA Index", 10, 1, "/hr", RPT_SESSION},
+
+    // SUMMARY
+    {"PHM", "Total Used Hrs", 0, 0, "hrs", RPT_SUMMARY},    {"LRD", "Leak", 10, 0, "L/min", RPT_SUMMARY},
+    {"DRD", "Days Used", -3, 0, "", RPT_SUMMARY},           {"ZAV", "Vt", 0, 0, "ml", RPT_SUMMARY},
+    {"VRD", "Days 4hrs+", -3, 0, "", RPT_SUMMARY},          {"ZAR", "RR", 5, 0, "bpm", RPT_SUMMARY},
+    {"WRD", "Avg. Usage", -60, 1, "hrs", RPT_SUMMARY},      {"ZAM", "MV", 8, 1, "L/min", RPT_SUMMARY},
+    {"XRD", "Used Hrs", -60, 1, "hrs", RPT_SUMMARY},        {"ZA2", "TgMV", 8, 1, "L/min", RPT_SUMMARY},
+    {"ZAI", "Pressure", 50, 1, "cmH2O", RPT_SUMMARY},      {"ZA3", "Va", 8, 1, "L/min", RPT_SUMMARY},
+    {"ZAE", "Exp. Pressure", 50, 1, "cmH2O", RPT_SUMMARY}, {"ZAZ", "Ti", 50, 2, "s", RPT_SUMMARY},
+    {"ARD", "AHI", 10, 1, "/hr", RPT_SUMMARY},              {"ZA1", "I:E", -1, 0, "", RPT_SUMMARY},
+    {"TRD", "Total AI", 10, 1, "/hr", RPT_SUMMARY},         {"ZAS", "Spont Trig", 2, 1, "%", RPT_SUMMARY},
+    {"CRD", "Central AI", 10, 1, "/hr", RPT_SUMMARY},       {"ZAY", "Spont Cyc", 2, 1, "%", RPT_SUMMARY},
+
+    {NULL, NULL, 0, 0, NULL, NULL}
+};
+
+static String period_label(int raw) {
+    switch (raw) {
+        case 1:   return "1 Day";
+        case 7:   return "1 Week";
+        case 30:  return "1 Month";
+        case 90:  return "3 Months";
+        case 180: return "6 Months";
+        case 365: return "1 Year";
+        default:  return String(raw) + " days";
+    }
+}
+
+static void handleReport(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+
+    int period = 0;
+    readSetting("URD", period);
+
+    String json = "[";
+    bool first = true;
+
+    for (const report_var_t *v = REPORT_VARS; v->cmd; v++) {
+        int raw = 0;
+        bool ok = readSetting(v->cmd, raw);
+
+        if (!first) json += ',';
+        first = false;
+
+        json += '{';
+        jsonAddString(json, "cmd", v->cmd, false);
+        jsonAddString(json, "label", v->label);
+        jsonAddInt(json, "raw", ok ? raw : -1);
+
+        char buf[32];
+        if (ok && v->scale_div == -61) {
+            // Raw minutes -> H:MM
+            snprintf(buf, sizeof(buf), "%d:%02d", raw / 60, raw % 60);
+            jsonAddString(json, "value", buf);
+        } else if (ok && v->scale_div == -60) {
+            // Raw minutes -> decimal hours (round properly)
+            double hrs = (double)raw / 60.0;
+            snprintf(buf, sizeof(buf), "%.*f", v->decimals, hrs);
+            jsonAddString(json, "value", buf);
+        } else if (ok && v->scale_div == -3) {
+            // N/period format (e.g. "6/7")
+            snprintf(buf, sizeof(buf), "%d/%d", raw, period);
+            jsonAddString(json, "value", buf);
+        } else if (ok && v->scale_div == -2) {
+            // Period enum
+            jsonAddString(json, "value", period_label(raw).c_str());
+        } else if (ok && v->scale_div == -1) {
+            // I:E ratio: raw/100
+            if (raw > 0) {
+                float ratio = (float)raw / 100.0f;
+                if (ratio >= 1.0f) {
+                    snprintf(buf, sizeof(buf), "%.1f:1", ratio);
+                } else {
+                    snprintf(buf, sizeof(buf), "1:%.1f", 1.0f / ratio);
+                }
+            } else {
+                snprintf(buf, sizeof(buf), "--");
+            }
+            jsonAddString(json, "value", buf);
+        } else if (ok && v->scale_div > 0) {
+            double disp = (double)raw / (double)v->scale_div;
+            snprintf(buf, sizeof(buf), "%.*f", v->decimals, disp);
+            jsonAddString(json, "value", buf);
+        } else {
+            jsonAddString(json, "value", ok ? String(raw).c_str() : "--");
+        }
+        jsonAddString(json, "unit", v->unit);
+        jsonAddString(json, "section", v->section);
+        json += '}';
+    }
+
+    json += ']';
+    request->send(200, "application/json", json);
+}
+
 static void handleReboot(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
     request->send(200, "application/json", "{\"ok\":true}");
@@ -958,6 +1075,7 @@ void WebUI::init(uint16_t port) {
     http->on("/api/flash", HTTP_GET, handleFlashStatus);
     http->on("/api/flash", HTTP_POST, handleFlashStart, NULL, handleJsonBody);
     http->on("/api/flash/cancel", HTTP_POST, handleFlashCancel);
+    http->on("/api/report", HTTP_GET, handleReport);
     http->on("/api/reboot", HTTP_POST, handleReboot);
 
     DefaultHeaders::Instance().addHeader("Cache-Control", "no-store");
