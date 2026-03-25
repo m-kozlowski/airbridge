@@ -5,11 +5,11 @@
 
 | Left | Right |
 |------|-------|
-| Tx   | nc    |
-| Rx   | GND   |
+| **Tx**   | nc    |
+| **Rx**   | **GND**   |
 | nc   | nc    |
 | nc   | nc    |
-| nc   | +24V  |
+| nc   | **+24V**  |
 
 UART: 3.3V logic, 57600 8N1.
 
