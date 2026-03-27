@@ -162,11 +162,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 <div class="btn-row"><button class="btn" onclick="saveConfig()">Save & Persist</button></div>
 <div class="msg" id="configMsg"></div>
 </div>
-<div class="card"><h3>System</h3>
-<div id="systemFields"></div>
-<div class="btn-row"><button class="btn" onclick="saveSettings('system')">Save</button></div>
-<div class="msg" id="systemMsg"></div>
-</div></div>
+</div>
 
 <!-- OTA UPLOAD -->
 <div class="pane" id="ota"><div class="card"><h3>ResMed Firmware Upload</h3>
