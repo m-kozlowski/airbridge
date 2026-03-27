@@ -2,6 +2,7 @@
 #include "uart_arbiter.h"
 #include "debug_log.h"
 #include "app_config.h"
+#include "qframe.h"
 
 #include <NimBLEDevice.h>
 
@@ -227,20 +228,52 @@ static bool subscribe_services(NimBLEClient *cl) {
 }
 
 
+// Persistent L-frame state: sequence counter and alive toggle bit
+static uint8_t oxh_seq    = 0;
+static uint8_t oxh_toggle = 0;
+
 static void inject_reading() {
-    if (!reading.valid) return;
     system_state_t st = Arbiter::get_state();
     if (st == SYS_TRANSPARENT || st == SYS_OTA_AIRSENSE || st == SYS_OTA_ESP) return;
 
-    // Skip feeding when therapy is off
     auto &cfg = Config::get();
     if (cfg.oxi_feed_therapy_only && st != SYS_THERAPY) return;
+    if (!cfg.oxi_lframe_continuous && !reading.valid) return;
 
-    char cmd[32];
-    snprintf(cmd, sizeof(cmd), "P S #SAO %02X", (uint8_t)reading.spo2);
-    Arbiter::send_cmd(cmd, CMD_SRC_OXI, CMD_PRIO_LOW, nullptr, nullptr, 500);
-    snprintf(cmd, sizeof(cmd), "P S #HRT %03X", (uint16_t)reading.pulse_bpm);
-    Arbiter::send_cmd(cmd, CMD_SRC_OXI, CMD_PRIO_LOW, nullptr, nullptr, 500);
+    // Alive toggle: bit 1 (0x02), alternates every frame, synchronized between OXS and SAS
+    uint8_t toggle = oxh_toggle ? 0x02 : 0x00;
+    oxh_toggle ^= 1;
+
+    uint8_t  oxs, sas;
+    uint16_t hrr;
+    uint8_t  sar;
+
+    if (reading.valid) {
+        // Finger present: OXS bit7=1, bit0=1; SAS bit7=1
+        oxs = 0x81 | toggle;   // 0x81 / 0x83
+        sas = 0x80 | toggle;   // 0x80 / 0x82
+        hrr = (uint16_t)reading.pulse_bpm;
+        sar = (uint8_t)reading.spo2;
+    } else {
+        // No finger / no signal: OXS bit7=1, bit4=1, bit3=1, bit0=1; SAS bit7=1, bit4=1, bit3=1
+        oxs = 0x99 | toggle;   // 0x99 / 0x9B
+        sas = 0x98 | toggle;   // 0x98 / 0x9A
+        hrr = 0x1FF;
+        sar = 0x7F;
+    }
+
+    // Payload: "OXH" + seq(2) + oxs(2) + hrr(3) + sas(2) + sar(2) + "10" = 16 chars
+    char payload[17];
+    snprintf(payload, sizeof(payload), "OXH%02X%02X%03X%02X%02X10",
+             oxh_seq, oxs, hrr, sas, sar);
+    oxh_seq = (oxh_seq + 1) & 0xFF;
+
+    uint8_t frame_buf[32];
+    int frame_len = qframe_build('L', (const uint8_t *)payload, 16,
+                                 frame_buf, sizeof(frame_buf));
+    if (frame_len < 0) return;
+
+    Arbiter::send_frame(frame_buf, (uint16_t)frame_len, CMD_SRC_OXI, CMD_PRIO_LOW);
 }
 
 

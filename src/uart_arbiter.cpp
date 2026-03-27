@@ -175,7 +175,11 @@ static void arbiter_task(void *param) {
         uart->flush();
         stat_tx++;
 
-        if (xSemaphoreTake(rx_ready, pdMS_TO_TICKS(t->timeout_ms)) == pdTRUE
+        if (t->no_ack) {
+            t->success = true;
+            t->timed_out = false;
+            t->resp_len = 0;
+        } else if (xSemaphoreTake(rx_ready, pdMS_TO_TICKS(t->timeout_ms)) == pdTRUE
             && rx_frame_available) {
             // Got response
             t->resp_type = last_rx_frame.type;
@@ -199,7 +203,11 @@ static void arbiter_task(void *param) {
         current_ticket = nullptr;
         rx_frame_available = false;
 
-        xSemaphoreGive(t->done);
+        if (t->done) {
+            xSemaphoreGive(t->done);
+        } else {
+            free(t);  // no_ack heap ticket, arbiter is sole owner
+        }
     }
 }
 
@@ -288,6 +296,32 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
     }
 
     return ticket.success;
+}
+
+bool Arbiter::send_frame(const uint8_t *frame, uint16_t frame_len,
+                         cmd_source_t src, cmd_priority_t prio)
+{
+    if (sys_state == SYS_TRANSPARENT) return false;
+    if (frame_len > QFRAME_MAX_RAW) return false;
+
+    // Heap-allocated: arbiter owns the ticket after push and frees it after send.
+    // Caller returns immediately — drop the frame if queue is full.
+    uart_ticket_t *ticket = (uart_ticket_t*)malloc(sizeof(uart_ticket_t));
+    if (!ticket) return false;
+
+    memset(ticket, 0, sizeof(*ticket));
+    ticket->source = src;
+    ticket->priority = prio;
+    ticket->no_ack = true;
+    ticket->done = nullptr;  // no semaphore — arbiter frees ticket
+    memcpy(ticket->frame, frame, frame_len);
+    ticket->frame_len = frame_len;
+
+    if (!pq_push(ticket)) {
+        free(ticket);
+        return false;
+    }
+    return true;
 }
 
 system_state_t Arbiter::get_state()         { return sys_state; }

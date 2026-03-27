@@ -20,7 +20,8 @@ static void apply_defaults() {
     cfg.oxi_feed_therapy_only = false;
     cfg.oxi_device_type = 0;
     cfg.oxi_device_addr = "";
-    cfg.oxi_interval_ms = 1000;
+    cfg.oxi_interval_ms = 500;
+    cfg.oxi_lframe_continuous = true;
 
     cfg.uart_baud = CFG_DEFAULT_BAUD;
     cfg.uart_cmd_timeout_ms = 2000;
@@ -57,6 +58,7 @@ void Config::load() {
     cfg.oxi_device_type = prefs.getUChar("oxi_devtype", cfg.oxi_device_type);
     cfg.oxi_device_addr = prefs.getString("oxi_devaddr", cfg.oxi_device_addr);
     cfg.oxi_interval_ms = prefs.getUShort("oxi_interval", cfg.oxi_interval_ms);
+    cfg.oxi_lframe_continuous = prefs.getBool("oxi_lframe_cont", cfg.oxi_lframe_continuous);
 
     cfg.uart_baud       = prefs.getULong("uart_baud", cfg.uart_baud);
     cfg.uart_cmd_timeout_ms = prefs.getUShort("uart_timeout", cfg.uart_cmd_timeout_ms);
@@ -87,6 +89,7 @@ void Config::save() {
     prefs.putUChar("oxi_devtype", cfg.oxi_device_type);
     prefs.putString("oxi_devaddr", cfg.oxi_device_addr);
     prefs.putUShort("oxi_interval", cfg.oxi_interval_ms);
+    prefs.putBool("oxi_lframe_cont", cfg.oxi_lframe_continuous);
 
     prefs.putULong("uart_baud", cfg.uart_baud);
     prefs.putUShort("uart_timeout", cfg.uart_cmd_timeout_ms);
@@ -176,6 +179,7 @@ static const KVEntry kv_table[] = {
     KV_U8("oxi_device_type", oxi_device_type),
     KV_STR("oxi_device_addr", oxi_device_addr),
     KV_U16("oxi_interval_ms", oxi_interval_ms),
+    KV_BOOL("oxi_lframe_continuous", oxi_lframe_continuous),
     KV_U32("uart_baud", uart_baud),
     KV_U16("uart_cmd_timeout_ms", uart_cmd_timeout_ms),
     KV_U8("uart_max_retries", uart_max_retries),

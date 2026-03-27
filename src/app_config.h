@@ -15,6 +15,7 @@ struct AirBridgeConfig {
     uint8_t     oxi_device_type;    // 0=auto, 1=Nonin, 2=O2Ring, 3=PLX generic
     String      oxi_device_addr;
     uint16_t    oxi_interval_ms;
+    bool        oxi_lframe_continuous; // send L-frames even when no valid reading
 
     uint32_t    uart_baud;
     uint16_t    uart_cmd_timeout_ms;

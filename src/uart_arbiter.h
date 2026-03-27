@@ -35,6 +35,7 @@ typedef struct {
     uint16_t        frame_len;
     uint32_t        ticket_id;
     uint16_t        timeout_ms;
+    bool            no_ack;
 
     uint8_t         resp_payload[QFRAME_MAX_PAYLOAD];
     uint16_t        resp_len;
@@ -51,6 +52,9 @@ namespace Arbiter {
     bool send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
                   char *resp_buf, uint16_t *resp_len,
                   uint16_t timeout_ms = 2000);
+
+    bool send_frame(const uint8_t *frame, uint16_t frame_len,
+                    cmd_source_t src, cmd_priority_t prio);
 
     bool submit(uart_ticket_t *ticket);
 
