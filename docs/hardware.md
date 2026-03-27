@@ -47,7 +47,7 @@ Hot-plugging the stepdown module may trip the AirSense overcurrent protection, c
     - 47 ohm resistor in series with +24V prevents
       overcurrent trip when hot-plugging the step-down module
     - MP1584EN is a cheap ready-made module. Any 24V-to-3.3V
-      step-down will work as long as it can supply 500mA+
+      step-down will work as long as it can supply 300mA+
     - TODO: design proper power supply closer to IEC 60601
       for medical electrical equipment
 ```
