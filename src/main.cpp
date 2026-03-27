@@ -52,7 +52,7 @@ static void serial_poll() {
 
 // Health monitoring: poll ROP every 10s to detect therapy state
 #define HEALTH_POLL_INTERVAL_MS     10000
-#define HEALTH_TIMEOUT_MS           3000
+#define HEALTH_TIMEOUT_MS           500
 
 static uint32_t last_health_poll = 0;
 static uint32_t consecutive_timeouts = 0;
@@ -61,6 +61,8 @@ static void poll_therapy_state() {
     char resp[64] = {};
     uint16_t resp_len = sizeof(resp);
 
+    uint32_t t0 = millis();
+    Log::logf(CAT_HEALTH, LOG_DEBUG, "[HEALTH] ROP poll start t=%lu\n", t0);
     bool ok = Arbiter::send_cmd("G S #ROP", CMD_SRC_INTERNAL, CMD_PRIO_HIGH,
                                 resp, &resp_len, HEALTH_TIMEOUT_MS);
     if (ok) {
@@ -84,7 +86,9 @@ static void poll_therapy_state() {
         }
     } else {
         consecutive_timeouts++;
-        Log::logf(CAT_HEALTH, LOG_WARN, "[HEALTH] ROP poll timeout (%d consecutive)\n", consecutive_timeouts);
+        Log::logf(CAT_HEALTH, consecutive_timeouts >= 2 ? LOG_WARN : LOG_DEBUG,
+                  "[HEALTH] ROP poll timeout (%d consecutive) t=%lu dt=%lu\n",
+                  consecutive_timeouts, millis(), millis() - t0);
 
         if (consecutive_timeouts >= 3) {
             system_state_t current = Arbiter::get_state();

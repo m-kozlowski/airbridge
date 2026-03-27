@@ -231,6 +231,7 @@ static bool subscribe_services(NimBLEClient *cl) {
 // Persistent L-frame state: sequence counter and alive toggle bit
 static uint8_t oxh_seq    = 0;
 static uint8_t oxh_toggle = 0;
+static bool    last_valid  = false;
 
 static void inject_reading() {
     system_state_t st = Arbiter::get_state();
@@ -239,6 +240,16 @@ static void inject_reading() {
     auto &cfg = Config::get();
     if (cfg.oxi_feed_therapy_only && st != SYS_THERAPY) return;
     if (!cfg.oxi_lframe_continuous && !reading.valid) return;
+
+    // Log finger placed / lost transitions
+    if (reading.valid != last_valid) {
+        if (reading.valid)
+            Log::logf(CAT_BLE, LOG_INFO, "[BLE] Finger detected: SpO2=%d%% HR=%d bpm\n",
+                      reading.spo2, reading.pulse_bpm);
+        else
+            Log::logf(CAT_BLE, LOG_INFO, "[BLE] Finger lost\n");
+        last_valid = reading.valid;
+    }
 
     // Alive toggle: bit 1 (0x02), alternates every frame, synchronized between OXS and SAS
     uint8_t toggle = oxh_toggle ? 0x02 : 0x00;
@@ -267,6 +278,10 @@ static void inject_reading() {
     snprintf(payload, sizeof(payload), "OXH%02X%02X%03X%02X%02X10",
              oxh_seq, oxs, hrr, sas, sar);
     oxh_seq = (oxh_seq + 1) & 0xFF;
+
+    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] L-frame seq=%02X %s SpO2=%d HR=%d t=%lu\n",
+              (oxh_seq - 1) & 0xFF, reading.valid ? "valid" : "no-finger",
+              reading.spo2, reading.pulse_bpm, millis());
 
     uint8_t frame_buf[32];
     int frame_len = qframe_build('L', (const uint8_t *)payload, 16,
@@ -396,7 +411,10 @@ void BleOxi::task(void *param) {
                     if (subscribe_services(pClient)) {
                         set_state(OXI_STREAMING);
                         Log::logf(CAT_BLE, LOG_INFO, "[BLE] Streaming started\n");
-                        if (cfg.oxi_auto_start) feeding = true;
+                        if (cfg.oxi_auto_start) {
+                            feeding = true;
+                            Log::logf(CAT_BLE, LOG_INFO, "[BLE] Feeding started (auto)\n");
+                        }
                     } else {
                         Log::logf(CAT_BLE, LOG_WARN, "[BLE] No suitable services\n");
                         pClient->disconnect();
@@ -447,8 +465,8 @@ void BleOxi::connect(const char *addr) {
 }
 
 void BleOxi::disconnect()  { disconnect_requested = true; }
-void BleOxi::start_feed()  { feeding = true; }
-void BleOxi::stop_feed()   { feeding = false; }
+void BleOxi::start_feed()  { feeding = true;  Log::logf(CAT_BLE, LOG_INFO, "[BLE] Feeding started\n"); }
+void BleOxi::stop_feed()   { feeding = false; Log::logf(CAT_BLE, LOG_INFO, "[BLE] Feeding stopped\n"); }
 oxi_state_t BleOxi::get_state()            { return state; }
 const oxi_reading_t& BleOxi::get_reading() { return reading; }
 bool BleOxi::is_feeding()                  { return feeding; }

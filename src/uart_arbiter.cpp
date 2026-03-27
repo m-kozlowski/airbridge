@@ -148,11 +148,14 @@ static void rx_task(void *param) {
                     memcpy((void*)&last_rx_frame, f, sizeof(qframe_t));
                     rx_frame_available = true;
                     stat_rx++;
+                    Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX frame type=%c len=%u t=%lu\n",
+                              f->type, f->payload_len, millis());
                     if (rx_ready) {
                         xSemaphoreGive(rx_ready);
                     }
                 } else {
                     stat_error++;
+                    Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX frame CRC error t=%lu\n", millis());
                 }
                 qframe_parser_reset(&rx_parser);
             }
@@ -174,6 +177,8 @@ static void arbiter_task(void *param) {
         uart->write(t->frame, t->frame_len);
         uart->flush();
         stat_tx++;
+        Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] TX type=%c len=%u src=%d prio=%d t=%lu\n",
+                  (char)t->frame[1], t->frame_len, t->source, t->priority, millis());
 
         if (t->no_ack) {
             t->success = true;
