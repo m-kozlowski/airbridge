@@ -30,11 +30,10 @@ Hot-plugging the stepdown module may trip the AirSense overcurrent protection, c
     Rx  -------------------------------- G26 (TX)    |
     GND ----------------+--------------- GND         |
                         |                |           |
-                        |    +--------> 3V3          |
-                        |    |           |           |
-                        |    |           +-----------+
-                        |    |
-    +24V ---[47R]--+    |    |
+    +24V ---[47R]--+    |    +--------> 3V3          |
+                   |    |    |           |           |
+                   |    |    |           +-----------+
+                   |    |    |
                    |    |    |
                +---+----+----+---+
                |  IN+  GND  OUT+ |
@@ -48,7 +47,7 @@ Hot-plugging the stepdown module may trip the AirSense overcurrent protection, c
       overcurrent trip when hot-plugging the step-down module
     - MP1584EN is a cheap ready-made module. Any 24V-to-3.3V
       step-down will work as long as it can supply 300mA+
-    - TODO: design proper power supply closer to IEC 60601
+    - TODO: design proper board closer to IEC 60601
       for medical electrical equipment
 ```
 
