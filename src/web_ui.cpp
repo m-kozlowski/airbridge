@@ -386,14 +386,13 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
         uploadSize = 0;
         uploadOk = false;
 
-        resmed_part = esp_partition_find_first(
-            ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "resmed");
+        resmed_part = ResmedOta::get_staging_partition();
         if (!resmed_part) {
-            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] 'resmed' partition not found\n");
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] No staging partition found\n");
             return;
         }
-        Log::logf(CAT_WEB, LOG_DEBUG, "[WEB] Partition: offset=0x%X size=%u\n",
-                     resmed_part->address, resmed_part->size);
+        Log::logf(CAT_WEB, LOG_INFO, "[WEB] Staging to '%s' (0x%X, %u bytes)\n",
+                     resmed_part->label, resmed_part->address, resmed_part->size);
 
         esp_err_t err = esp_partition_erase_range(resmed_part, 0, resmed_part->size);
         if (err != ESP_OK) {

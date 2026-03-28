@@ -4,12 +4,24 @@
 #include "debug_log.h"
 #include "app_config.h"
 #include <esp_partition.h>
+#include <esp_ota_ops.h>
 
 #define FLASH_TASK_STACK    8192
 #define FLASH_TASK_PRIO     3
 
 #define CHUNK_SIZE          250
 #define BID_OFFSET_SX577    0x3F80  // BID string offset within BLX
+
+const esp_partition_t* ResmedOta::get_staging_partition() {
+    // try dedicated resmed partition (backwards compatibility)
+    const esp_partition_t *p = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "resmed");
+    if (p) return p;
+
+    // or use inactive OTA app slot
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    return esp_ota_get_next_update_partition(running);
+}
 
 struct block_info_t {
     const char *name;
@@ -399,12 +411,13 @@ static void flash_task(void *param) {
         flash_total = p->fw_size;
     }
 
-    const esp_partition_t *part = esp_partition_find_first(
-        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "resmed");
+    const esp_partition_t *part = ResmedOta::get_staging_partition();
     if (!part) {
-        snprintf(flash_error, sizeof(flash_error), "resmed partition not found");
+        snprintf(flash_error, sizeof(flash_error), "No staging partition found");
         goto done;
     }
+    Log::logf(CAT_OTA, LOG_INFO, "[OTA] Using partition '%s' (0x%X, %u bytes)\n",
+              part->label, part->address, part->size);
 
     // BLX safety check
     if ((is_full && p->flash_blx) || strcmp(p->block, "BLX") == 0) {

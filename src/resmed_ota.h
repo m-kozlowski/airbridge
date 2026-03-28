@@ -1,10 +1,12 @@
 #pragma once
 #include <Arduino.h>
+#include <esp_partition.h>
 
 typedef void (*flash_progress_cb)(size_t sent, size_t total, const char *phase);
 
 namespace ResmedOta {
-    // Flash firmware from 'resmed' partition to AirSense block.
+    const esp_partition_t* get_staging_partition();
+
     // block: "FULL", "CMX", "CDX", "CCX", "BLX" (nullptr = auto-detect)
     //   FULL = 1MB image containing BLX+CMX. Flashes CMX by default,
     //          BLX only if flash_blx is set (with BID safety check).

@@ -258,10 +258,9 @@ void dispatch_command(const char *line, String &response) {
             extern size_t uploadSize;
             size_t fw_size = uploadSize;
             if (fw_size == 0) {
-                const esp_partition_t *part = esp_partition_find_first(
-                    ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, "resmed");
+                const esp_partition_t *part = ResmedOta::get_staging_partition();
                 if (!part) {
-                    response = "ERR: resmed partition not found\n";
+                    response = "ERR: no staging partition found\n";
                     return;
                 }
                 fw_size = part->size;
