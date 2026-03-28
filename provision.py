@@ -70,7 +70,7 @@ def provision(port):
         print(f"[*] No {os.path.basename(PROVISION_FILE)} found.")
         if os.path.exists(EXAMPLE_FILE):
             print(f"    Copy {os.path.basename(EXAMPLE_FILE)} to {os.path.basename(PROVISION_FILE)}")
-            print(f"    and fill in your values, then run: python {os.path.basename(__file__)}")
+            print(f"    and fill in your values, then run: python provision.py")
         return False
 
     entries = parse_provision_file(PROVISION_FILE)
