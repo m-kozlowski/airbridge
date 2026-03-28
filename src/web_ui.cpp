@@ -464,8 +464,8 @@ struct live_sample_t {
 };
 
 static live_sample_t live_buf[LIVE_BUF_SIZE];
-static volatile uint16_t live_head = 0;
-static volatile uint16_t live_seq = 0;
+static uint16_t live_head = 0;
+static uint16_t live_seq = 0;
 static volatile bool live_running = false;
 static TaskHandle_t live_task_handle = nullptr;
 

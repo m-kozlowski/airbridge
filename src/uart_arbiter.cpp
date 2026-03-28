@@ -27,10 +27,10 @@ static qframe_parser_t transparent_parser;      // shadow parser for BDD sniffin
 
 static uint32_t current_baud = 0;
 
-static volatile uint32_t stat_tx = 0;
-static volatile uint32_t stat_rx = 0;
-static volatile uint32_t stat_timeout = 0;
-static volatile uint32_t stat_error = 0;
+static uint32_t stat_tx = 0;
+static uint32_t stat_rx = 0;
+static uint32_t stat_timeout = 0;
+static uint32_t stat_error = 0;
 
 static uint32_t next_ticket_id = 1;
 

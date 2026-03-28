@@ -192,7 +192,7 @@ void TcpBridge::init_debug_server(uint16_t port) {
 void TcpBridge::poll_debug_clients() {
     if (!debug_server) return;
 
-    WiFiClient nc = debug_server->available();
+    WiFiClient nc = debug_server->accept();
     if (nc) {
         int slot = -1;
         for (int i = 0; i < DEBUG_MAX_CLIENTS; i++) {
@@ -244,7 +244,7 @@ void TcpBridge::task(void *param) {
 
     while (true) {
         if (!client || !client.connected()) {
-            WiFiClient newClient = server->available();
+            WiFiClient newClient = server->accept();
             if (newClient) {
                 client = newClient;
                 client.setNoDelay(true);
