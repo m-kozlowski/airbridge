@@ -14,25 +14,20 @@ const char *airbridge_build_date() { return AIRBRIDGE_BUILD_DATE; }
 
 void dispatch_command(const char *, String &) {}
 
-static bool lct_active = false;
-
 static void lct_display(const char *msg) {
     char cmd[64];
     char resp[64] = {};
     uint16_t resp_len;
 
-    if (lct_active) {
-        resp_len = sizeof(resp);
-        Arbiter::send_cmd("P S #LCA 0000", CMD_SRC_INTERNAL, CMD_PRIO_HIGH, resp, &resp_len, 1000);
-    }
+    resp_len = sizeof(resp);
+    Arbiter::send_cmd("P S #LCA 0000", CMD_SRC_INTERNAL, CMD_PRIO_HIGH, resp, &resp_len, 500);
 
     snprintf(cmd, sizeof(cmd), "P S #LCT %s", msg);
     resp_len = sizeof(resp);
-    Arbiter::send_cmd(cmd, CMD_SRC_INTERNAL, CMD_PRIO_HIGH, resp, &resp_len, 1000);
+    Arbiter::send_cmd(cmd, CMD_SRC_INTERNAL, CMD_PRIO_HIGH, resp, &resp_len, 500);
 
     resp_len = sizeof(resp);
-    Arbiter::send_cmd("P S #LCA 0001", CMD_SRC_INTERNAL, CMD_PRIO_HIGH, resp, &resp_len, 1000);
-    lct_active = true;
+    Arbiter::send_cmd("P S #LCA 0001", CMD_SRC_INTERNAL, CMD_PRIO_HIGH, resp, &resp_len, 500);
 
     Log::logf(CAT_OTA, LOG_INFO, "[MIG] LCD: %s\n", msg);
 }
