@@ -24,7 +24,7 @@ static void apply_defaults() {
     cfg.oxi_lframe_continuous = true;
 
     cfg.uart_baud = CFG_DEFAULT_BAUD;
-    cfg.uart_cmd_timeout_ms = 2000;
+    cfg.uart_cmd_timeout_ms = 500;
     cfg.uart_max_retries = 3;
 
     cfg.allow_transparent_during_therapy = false;

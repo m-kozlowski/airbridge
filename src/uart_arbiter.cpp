@@ -268,7 +268,7 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
         return false;
     }
 
-    xSemaphoreTake(ticket.done, pdMS_TO_TICKS(timeout_ms + 1000));
+    xSemaphoreTake(ticket.done, pdMS_TO_TICKS(timeout_ms + 100));
     vSemaphoreDelete(ticket.done);
 
     // BDD baud switching (arbiter mode)
