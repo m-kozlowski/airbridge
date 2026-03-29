@@ -447,6 +447,20 @@ static void handleUploadDone(AsyncWebServerRequest *request) {
         char hexcrc[12];
         snprintf(hexcrc, sizeof(hexcrc), "%08X", crc);
         jsonAddString(json, "crc", hexcrc);
+
+        // Firmware verification
+        fw_verify_result_t v = ResmedOta::verify_image(resmed_part, uploadSize);
+        if (v.has_blx) {
+            jsonAddString(json, "bid", v.bid);
+            jsonAddString(json, "bid_ok", v.bid_ok ? "true" : "false");
+            jsonAddString(json, "blx_crc", v.blx_crc_ok ? "ok" : "fail");
+            const char *patch = "none";
+            if (v.blx_patch == BLX_PATCH_A_DANGEROUS) patch = "method_a";
+            else if (v.blx_patch == BLX_PATCH_B_SAFE) patch = "method_b";
+            jsonAddString(json, "blx_patch", patch);
+        }
+        if (v.has_ccx) jsonAddString(json, "ccx_crc", v.ccx_crc_ok ? "ok" : "fail");
+        if (v.has_cdx) jsonAddString(json, "cdx_crc", v.cdx_crc_ok ? "ok" : "fail");
     }
 
     json += '}';

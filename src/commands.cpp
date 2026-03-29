@@ -270,6 +270,31 @@ void dispatch_command(const char *line, String &response) {
                 flash_blx = false;  // not relevant, standalone BLX
             }
 
+            // safety checks
+            bool has_warnings = false;
+            const esp_partition_t *staging = ResmedOta::get_staging_partition();
+            if (staging) {
+                fw_verify_result_t v = ResmedOta::verify_image(staging, fw_size);
+                if (v.has_blx && !v.bid_ok) {
+                    response += "WARN: Unknown BID: " + String(v.bid) + " (expected SX577-0200)\n";
+                    has_warnings = true;
+                }
+                if (v.has_blx && !v.blx_crc_ok) { response += "WARN: BLX CRC mismatch\n"; has_warnings = true; }
+                if (v.has_ccx && !v.ccx_crc_ok) { response += "WARN: CCX CRC mismatch\n"; has_warnings = true; }
+                if (v.has_cdx && !v.cdx_crc_ok) { response += "WARN: CDX CRC mismatch\n"; has_warnings = true; }
+                if (v.blx_patch == BLX_PATCH_A_DANGEROUS) {
+                    response += "!!! DANGER: Bootloader disables serial flash — needs SWD to recover !!!\n";
+                    has_warnings = true;
+                } else if (v.blx_patch == BLX_PATCH_B_SAFE) {
+                    response += "INFO: Bootloader integrity check disabled (safe method)\n";
+                }
+            }
+
+            if (has_warnings && !force_blx) {
+                response += "ERR: safety checks failed. Add FORCE to override.\n";
+                return;
+            }
+
             ResmedOta::start_flash(
                 block.length() > 0 ? block.c_str() : nullptr,
                 fw_size,
@@ -279,7 +304,7 @@ void dispatch_command(const char *line, String &response) {
 
             const char *detected = block.length() > 0 ? block.c_str()
                                     : ResmedOta::detect_block(fw_size);
-            response = "OK: flashing " + String(detected ? detected : "auto") +
+            response += "OK: flashing " + String(detected ? detected : "auto") +
                        " (" + String(fw_size) + " bytes)";
             if (flash_blx) response += " +BLX";
             if (force_blx) response += " FORCE";

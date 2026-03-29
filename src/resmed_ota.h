@@ -4,15 +4,31 @@
 
 typedef void (*flash_progress_cb)(size_t sent, size_t total, const char *phase);
 
+enum blx_patch_t {
+    BLX_PATCH_NONE,         // stock bootloader, integrity checks enabled
+    BLX_PATCH_A_DANGEROUS,  // 0xF0 patch, bricks serial flash
+    BLX_PATCH_B_SAFE,       // safe method
+};
+
+struct fw_verify_result_t {
+    bool has_blx;
+    bool bid_ok;
+    char bid[32];
+
+    bool has_ccx, has_cdx;
+    bool blx_crc_ok;
+    bool ccx_crc_ok;
+    bool cdx_crc_ok;
+
+    blx_patch_t blx_patch;
+};
+
 namespace ResmedOta {
     const esp_partition_t* get_staging_partition();
 
+    fw_verify_result_t verify_image(const esp_partition_t *part, size_t fw_size);
+
     // block: "FULL", "CMX", "CDX", "CCX", "BLX" (nullptr = auto-detect)
-    //   FULL = 1MB image containing BLX+CMX. Flashes CMX by default,
-    //          BLX only if flash_blx is set (with BID safety check).
-    // fw_size: actual firmware size in bytes
-    // flash_blx: for FULL images, also flash the BLX region
-    // force_blx: skip BID version check for BLX flashing
     void start_flash(const char *block, size_t fw_size,
                      bool flash_blx, bool force_blx);
 
@@ -24,6 +40,5 @@ namespace ResmedOta {
     size_t get_total();
     const char* last_error();
 
-    // Returns "FULL", "CMX", "CDX", "CCX", "BLX", or nullptr
     const char* detect_block(size_t fw_size);
 }

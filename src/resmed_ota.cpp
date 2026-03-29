@@ -23,6 +23,87 @@ const esp_partition_t* ResmedOta::get_staging_partition() {
     return esp_ota_get_next_update_partition(running);
 }
 
+static uint16_t crc16_ccitt(const uint8_t *data, size_t len, uint16_t crc = 0xFFFF) {
+    for (size_t i = 0; i < len; i++) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (int j = 0; j < 8; j++)
+            crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+    }
+    return crc;
+}
+
+static bool verify_block_crc(const esp_partition_t *part, size_t offset, size_t size) {
+    uint8_t buf[512];
+    uint16_t crc = 0xFFFF;
+    size_t remaining = size;
+    size_t pos = 0;
+    while (remaining > 0) {
+        size_t chunk = (remaining > sizeof(buf)) ? sizeof(buf) : remaining;
+        if (esp_partition_read(part, offset + pos, buf, chunk) != ESP_OK) return false;
+        crc = crc16_ccitt(buf, chunk, crc);
+        pos += chunk;
+        remaining -= chunk;
+    }
+    return crc == 0;
+}
+
+static bool check_bytes(const esp_partition_t *part, size_t offset,
+                        const uint8_t *expected, size_t len) {
+    uint8_t buf[16];
+    if (len > sizeof(buf)) return false;
+    if (esp_partition_read(part, offset, buf, len) != ESP_OK) return false;
+    return memcmp(buf, expected, len) == 0;
+}
+
+fw_verify_result_t ResmedOta::verify_image(const esp_partition_t *part, size_t fw_size) {
+    fw_verify_result_t r = {};
+
+    // Block layout for SX577-0200
+    const size_t BLX_OFF = 0x00000, BLX_SIZE = 0x04000;
+    const size_t CCX_OFF = 0x04000, CCX_SIZE = 0x3C000;
+    const size_t CDX_OFF = 0x40000, CDX_SIZE = 0xC0000;
+
+    r.has_blx = (fw_size >= BLX_OFF + BLX_SIZE);
+    r.has_ccx = (fw_size >= CCX_OFF + CCX_SIZE);
+    r.has_cdx = (fw_size >= CDX_OFF + CDX_SIZE);
+
+    // BID check
+    if (r.has_blx) {
+        memset(r.bid, 0, sizeof(r.bid));
+        esp_partition_read(part, BID_OFFSET_SX577, r.bid, sizeof(r.bid) - 1);
+        for (int i = 0; i < (int)sizeof(r.bid) - 1; i++) {
+            if (r.bid[i] < 0x20 || r.bid[i] > 0x7E) { r.bid[i] = '\0'; break; }
+        }
+        r.bid_ok = (strncmp(r.bid, "SX577-0200", 10) == 0);
+    }
+
+    // Block CRCs
+    if (r.has_blx) r.blx_crc_ok = verify_block_crc(part, BLX_OFF, BLX_SIZE);
+    if (r.has_ccx) r.ccx_crc_ok = verify_block_crc(part, CCX_OFF, CCX_SIZE);
+    if (r.has_cdx) r.cdx_crc_ok = verify_block_crc(part, CDX_OFF, CDX_SIZE);
+
+    // Bootloader patch detection
+    r.blx_patch = BLX_PATCH_NONE;
+    if (r.has_blx) {
+        // old airbreak method. breaks serial flashing
+        const uint8_t patch_a[] = {0xC0, 0x46};
+        if (check_bytes(part, 0xF0, patch_a, sizeof(patch_a))) {
+            r.blx_patch = BLX_PATCH_A_DANGEROUS;
+        }
+
+        // Method B: skip verification, but allow bootloader to run
+        const uint8_t patch_b1[] = {0x01, 0x20, 0xC0, 0x46};
+        const uint8_t patch_b2[] = {0x00, 0x20, 0xC0, 0x46};
+        if (check_bytes(part, 0x310E, patch_b1, sizeof(patch_b1)) &&
+            check_bytes(part, 0x313E, patch_b2, sizeof(patch_b2)) &&
+            check_bytes(part, 0x3130, patch_b2, sizeof(patch_b2))) {
+            r.blx_patch = BLX_PATCH_B_SAFE;
+        }
+    }
+
+    return r;
+}
+
 struct block_info_t {
     const char *name;
     uint32_t base_addr;

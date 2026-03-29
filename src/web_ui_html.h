@@ -173,6 +173,7 @@ input[type=text],input[type=password]{background:#1a1a2e;color:#e0e0e0;border:1p
 <div class="progress" id="uploadProgress"><div class="bar" id="uploadBar"></div></div>
 <div class="msg" id="uploadMsg"></div>
 <div id="fileInfo" style="font-size:13px;color:#888;margin-top:8px"></div>
+<div id="fwWarnings" style="margin-top:8px"></div>
 </div>
 <div class="card" id="flashCard" style="display:none"><h3>Flash to Device</h3>
 <div class="row">
@@ -461,9 +462,10 @@ async function saveConfig(){
   }catch(e){showMsg(msgEl,'Error: '+e.message,'err');}
 }
 
-function showMsg(el,text,type){
+function showMsg(el,text,type,timeout){
   if(!el)return;el.textContent=text;el.className='msg '+type;
-  setTimeout(()=>{el.className='msg';},5000);
+  if(el._msgTimer)clearTimeout(el._msgTimer);
+  if(timeout!==0)el._msgTimer=setTimeout(()=>{el.className='msg';},timeout||5000);
 }
 
 // BLE management
@@ -575,10 +577,33 @@ dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
 dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');uploadFile(e.dataTransfer.files[0]);});
 fi.addEventListener('change',e=>{if(e.target.files[0])uploadFile(e.target.files[0]);});
 
+function showFwWarnings(d){
+  const el=document.getElementById('fwWarnings');el.innerHTML='';
+  const warn=(msg,cls)=>{const div=document.createElement('div');
+    div.className='msg '+cls;div.style.display='block';div.textContent=msg;el.appendChild(div);};
+  let allOk=true;
+  if(d.bid!==undefined&&d.bid_ok==='false'){
+    warn('Unknown bootloader version: '+d.bid+'. Expected SX577-0200.','err');allOk=false;}
+  if(d.blx_crc==='fail'){
+    warn('BLX (bootloader) CRC mismatch. Will not boot with integrity-checking bootloader.','err');allOk=false;}
+  if(d.ccx_crc==='fail'){
+    warn('CCX (config) CRC mismatch. Will not boot with integrity-checking bootloader.','err');allOk=false;}
+  if(d.cdx_crc==='fail'){
+    warn('CDX (firmware) CRC mismatch. Will not boot with integrity-checking bootloader.','err');allOk=false;}
+  if(d.blx_patch==='method_a'){
+    warn('\u26a0\ufe0f DANGER: This bootloader permanently disables serial flashing! Device will require SWD to recover. Do NOT flash unless you have SWD access.','err');allOk=false;}
+  else if(d.blx_patch==='method_b'){
+    warn('Bootloader integrity check disabled (safe method).','ok');}
+  else if(d.blx_patch==='none'&&d.bid!==undefined){
+    warn('Stock bootloader — firmware integrity checks enabled.','ok');}
+  if(allOk&&d.bid!==undefined) warn('All verification checks passed. BID: '+d.bid,'ok');
+}
+
 async function uploadFile(file){
   const msgEl=document.getElementById('uploadMsg');
   const info=document.getElementById('fileInfo');
   info.textContent=`${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById('fwWarnings').innerHTML='';
   const prog=document.getElementById('uploadProgress');
   const bar=document.getElementById('uploadBar');
   prog.style.display='block';bar.style.width='0%';
@@ -588,7 +613,8 @@ async function uploadFile(file){
     xhr.upload.onprogress=e=>{if(e.lengthComputable)bar.style.width=(e.loaded/e.total*100)+'%';};
     xhr.onload=()=>{
       if(xhr.status===200){const d=JSON.parse(xhr.responseText);
-        showMsg(msgEl,`Upload OK: ${d.size} bytes, CRC: ${d.crc||'n/a'}`,'ok');
+        showMsg(msgEl,`Upload OK: ${d.size} bytes, CRC: ${d.crc||'n/a'}`,'ok',0);
+        showFwWarnings(d);
         showFlashCard();}
       else showMsg(msgEl,'Upload failed: '+xhr.statusText,'err');
     };
