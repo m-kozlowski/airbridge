@@ -114,7 +114,8 @@ static String getBody(AsyncWebServerRequest *request) {
 
 static void handleRoot(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
-    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", (const uint8_t*)HTML_PAGE, strlen_P(HTML_PAGE));
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/html", HTML_PAGE_GZ, HTML_PAGE_GZ_SIZE);
+    response->addHeader("Content-Encoding", "gzip");
     request->send(response);
 }
 

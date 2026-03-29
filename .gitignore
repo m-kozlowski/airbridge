@@ -3,3 +3,6 @@
 build/
 *.pyc
 provision.env
+src/target_ptable.h
+src/web_ui_html.h
+
