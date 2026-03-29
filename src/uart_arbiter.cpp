@@ -1,4 +1,5 @@
 #include "uart_arbiter.h"
+#include "app_config.h"
 #include "debug_log.h"
 #include <freertos/queue.h>
 
@@ -244,6 +245,8 @@ bool Arbiter::submit(uart_ticket_t *ticket) {
 bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
                        char *resp_buf, uint16_t *resp_len, uint16_t timeout_ms)
 {
+    if (timeout_ms == 0) timeout_ms = Config::get().uart_cmd_timeout_ms;
+
     // Reject all commands while in transparent mode
     if (sys_state == SYS_TRANSPARENT) {
         if (resp_len) *resp_len = 0;

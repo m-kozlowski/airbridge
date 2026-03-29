@@ -45,7 +45,7 @@ static bool readSetting(const char *cmd, int &value) {
     char resp[64] = {};
     uint16_t resp_len = sizeof(resp);
     bool ok = Arbiter::send_cmd(req, CMD_SRC_TCP, CMD_PRIO_NORMAL,
-                                 resp, &resp_len, 2000);
+                                 resp, &resp_len);
     if (!ok) return false;
     value = parseResponseValue(resp);
     return value >= 0;
@@ -57,7 +57,7 @@ static bool writeSetting(const char *cmd, int value) {
     char resp[64] = {};
     uint16_t resp_len = sizeof(resp);
     return Arbiter::send_cmd(req, CMD_SRC_TCP, CMD_PRIO_NORMAL,
-                              resp, &resp_len, 2000);
+                              resp, &resp_len);
 }
 
 static void jsonAddString(String &out, const char *key, const char *val, bool comma = true) {
@@ -829,7 +829,7 @@ static void handleCmd(AsyncWebServerRequest *request) {
         char resp[128] = {};
         uint16_t resp_len = sizeof(resp);
         bool ok = Arbiter::send_cmd(cmd.c_str(), CMD_SRC_TCP, CMD_PRIO_NORMAL,
-                                     resp, &resp_len, 3000);
+                                     resp, &resp_len);
         jsonAddString(json, "ok", ok ? "true" : "false", false);
         if (ok && resp_len > 0) {
             jsonAddString(json, "response", resp);

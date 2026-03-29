@@ -108,7 +108,7 @@ static void attempt_recovery() {
     uint16_t resp_len = sizeof(resp);
 
     bool ok = Arbiter::send_cmd("G S #BLS", CMD_SRC_INTERNAL, CMD_PRIO_HIGH,
-                                resp, &resp_len, 5000);
+                                resp, &resp_len);
     if (ok) {
         Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Device responded, clearing error\n");
         consecutive_timeouts = 0;

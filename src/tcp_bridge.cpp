@@ -94,8 +94,7 @@ static void handle_line(const char *line) {
         uint16_t resp_len = sizeof(resp_buf);
 
         bool ok = Arbiter::send_cmd(line, CMD_SRC_TCP, CMD_PRIO_NORMAL,
-                                    resp_buf, &resp_len,
-                                    Config::get().uart_cmd_timeout_ms);
+                                    resp_buf, &resp_len);
 
         if (ok) {
             if (resp_len >= 2 && resp_buf[resp_len-1] == '#' && resp_buf[resp_len-2] == ' ') {

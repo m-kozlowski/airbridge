@@ -51,7 +51,7 @@ namespace Arbiter {
 
     bool send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
                   char *resp_buf, uint16_t *resp_len,
-                  uint16_t timeout_ms = 500);
+                  uint16_t timeout_ms = 0);  // 0 = use cfg.uart_cmd_timeout_ms
 
     bool send_frame(const uint8_t *frame, uint16_t frame_len,
                     cmd_source_t src, cmd_priority_t prio);

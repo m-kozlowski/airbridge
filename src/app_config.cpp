@@ -135,7 +135,7 @@ void Config::refresh_device_info() {
         len = sizeof(resp);
         memset(resp, 0, sizeof(resp));
         if (Arbiter::send_cmd("G S #PNA", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
-                               resp, &len, 2000)) {
+                               resp, &len)) {
             cfg.device_pna = parse_response_str(resp);
         }
     }
@@ -144,7 +144,7 @@ void Config::refresh_device_info() {
         len = sizeof(resp);
         memset(resp, 0, sizeof(resp));
         if (Arbiter::send_cmd("G S #SRN", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
-                               resp, &len, 2000)) {
+                               resp, &len)) {
             cfg.device_srn = parse_response_str(resp);
         }
     }
