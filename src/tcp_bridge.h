@@ -2,7 +2,6 @@
 #include <Arduino.h>
 
 namespace TcpBridge {
-    bool wifi_setup();
     void init();
     void task(void *param);
 

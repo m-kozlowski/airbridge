@@ -5,7 +5,7 @@
 #include "app_config.h"
 #include "debug_log.h"
 #include "uart_arbiter.h"
-#include "tcp_bridge.h"
+#include "wifi.h"
 #include "airbridge_ota.h"
 #include "migrate.h"
 
@@ -55,7 +55,7 @@ void setup() {
 
     Log::logf(CAT_INIT, LOG_INFO, "[MIG] Migration complete. Starting WiFi for OTA...\n");
 
-    bool wifi_ok = TcpBridge::wifi_setup();
+    bool wifi_ok = WiFiSetup::init();
     if (wifi_ok) {
         OtaManager::init();
         ota_enabled = true;

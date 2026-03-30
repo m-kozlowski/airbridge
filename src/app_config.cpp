@@ -37,6 +37,9 @@ static void apply_defaults() {
 
     cfg.ota_password = "airbridge";
 
+    cfg.ntp_server = "";
+    cfg.tz = "UTC0";
+
     cfg.mitm_mode = 0;
 }
 
@@ -73,6 +76,8 @@ void Config::load() {
     cfg.http_pass       = prefs.getString("http_pass", cfg.http_pass);
 
     cfg.ota_password    = prefs.getString("ota_pass", cfg.ota_password);
+    cfg.ntp_server      = prefs.getString("ntp_server", cfg.ntp_server);
+    cfg.tz              = prefs.getString("tz", cfg.tz);
     cfg.mitm_mode       = prefs.getUChar("mitm_mode", cfg.mitm_mode);
 }
 
@@ -104,6 +109,8 @@ void Config::save() {
     prefs.putString("http_pass", cfg.http_pass);
 
     prefs.putString("ota_pass", cfg.ota_password);
+    prefs.putString("ntp_server", cfg.ntp_server);
+    prefs.putString("tz", cfg.tz);
     prefs.putUChar("mitm_mode", cfg.mitm_mode);
 }
 
@@ -189,6 +196,8 @@ static const KVEntry kv_table[] = {
     KV_STR("http_user", http_user),
     KV_STR("http_pass", http_pass),
     KV_STR("ota_password", ota_password),
+    KV_STR("ntp_server", ntp_server),
+    KV_STR("tz", tz),
     KV_U8("mitm_mode", mitm_mode),
     { nullptr, KVEntry::U8, nullptr }
 };

@@ -23,59 +23,6 @@ static char line_buf[TCP_LINE_MAX];
 static int line_pos = 0;
 
 
-bool TcpBridge::wifi_setup() {
-    auto &cfg = Config::get();
-
-    if (cfg.wifi_mode == 2) {
-        WiFi.mode(WIFI_OFF);
-        return false;
-    }
-
-    WiFi.setHostname(cfg.hostname.c_str());
-
-    if (cfg.wifi_mode == 0 && cfg.wifi_ssid.length() > 0) {
-
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(cfg.wifi_ssid.c_str(), cfg.wifi_pass.c_str());
-        Log::logf(CAT_TCP, LOG_INFO, "[TCP] Connecting to WiFi '%s'...\n", cfg.wifi_ssid.c_str());
-
-        int attempts = 0;
-        while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-            delay(500);
-            Log::logf(CAT_TCP, LOG_DEBUG, ".");
-            attempts++;
-        }
-        if (WiFi.status() == WL_CONNECTED) {
-            Log::logf(CAT_TCP, LOG_INFO, "\n[TCP] Connected: %s\n", WiFi.localIP().toString().c_str());
-            return true;
-        } else {
-            Log::logf(CAT_TCP, LOG_WARN, "\n[TCP] STA connect failed, falling back to AP\n");
-            cfg.wifi_mode = 1;  // fallback
-        }
-    }
-
-    if (cfg.wifi_mode == 1) {
-
-        WiFi.mode(WIFI_AP);
-        String ap_ssid = cfg.hostname + "_" +
-                         String((uint32_t)ESP.getEfuseMac(), HEX);
-        WiFi.softAP(ap_ssid.c_str(), "airbridge");
-        delay(100);  // let lwIP finish AP setup
-        Log::logf(CAT_TCP, LOG_INFO, "[TCP] AP mode: SSID=%s IP=%s\n",
-                    ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
-        return true;
-    }
-
-    // wifi_mode 0 but no SSID configured
-    WiFi.mode(WIFI_AP);
-    String ap_ssid = cfg.hostname + "_" +
-                     String((uint32_t)ESP.getEfuseMac(), HEX);
-    WiFi.softAP(ap_ssid.c_str(), "airbridge");
-    delay(100);
-    Log::logf(CAT_TCP, LOG_WARN, "[TCP] No SSID configured, AP fallback: %s IP=%s\n",
-                ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
-    return true;
-}
 
 static void handle_line(const char *line) {
     if (line[0] == '\0') return;

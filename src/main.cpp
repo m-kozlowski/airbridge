@@ -3,6 +3,7 @@
 #include "debug_log.h"
 #include "uart_arbiter.h"
 #include "tcp_bridge.h"
+#include "wifi.h"
 #include "ble_oxi.h"
 #include "airbridge_ota.h"
 #include "web_ui.h"
@@ -133,7 +134,7 @@ void setup() {
     Arbiter::init(Serial1, PIN_AS10_RX, PIN_AS10_TX, Config::get().uart_baud);
     Log::logf(CAT_INIT, LOG_INFO, "[INIT] UART arbiter started\n");
 
-    bool wifi_ok = TcpBridge::wifi_setup();
+    bool wifi_ok = WiFiSetup::init();
 
     TcpBridge::init();
     Log::logf(CAT_INIT, LOG_INFO, "[INIT] TCP bridge started\n");
