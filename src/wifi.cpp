@@ -106,3 +106,32 @@ bool WiFiSetup::is_connected() {
 bool WiFiSetup::time_synced() {
     return ntp_synced;
 }
+
+
+void WiFiSetup::set_fallback_time(int year, int month, int day, int hour, int min, int sec) {
+    if (ntp_synced) return;
+
+    struct tm t = {};
+    t.tm_year = year - 1900;
+    t.tm_mon = month - 1;
+    t.tm_mday = day;
+    t.tm_hour = hour;
+    t.tm_min = min;
+    t.tm_sec = sec;
+    t.tm_isdst = -1;
+
+    time_t epoch = mktime(&t);
+    if (epoch < 0) return;
+
+    struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+    settimeofday(&tv, nullptr);
+
+    auto &cfg = Config::get();
+    if (cfg.tz.length() > 0) {
+        setenv("TZ", cfg.tz.c_str(), 1);
+        tzset();
+    }
+
+    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Fallback time from ResMed: %04d-%02d-%02d %02d:%02d\n",
+              year, month, day, hour, min);
+}

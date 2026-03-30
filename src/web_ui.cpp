@@ -162,21 +162,11 @@ static void handleStatus(AsyncWebServerRequest *request) {
     // TIC response: "= HHmmSS"
     char resmed_time[20] = "--";
     if (got_dac && got_tic) {
-        char *dac_val = strstr(dac_resp, "= ");
-        char *tic_val = strstr(tic_resp, "= ");
-        if (dac_val && tic_val) {
-            dac_val += 2;
-            tic_val += 2;
-            if (strlen(dac_val) >= 8 && strlen(tic_val) >= 6) {
-                char dd[3]={dac_val[0],dac_val[1],0};
-                char mm[3]={dac_val[2],dac_val[3],0};
-                char yyyy[5]={dac_val[4],dac_val[5],dac_val[6],dac_val[7],0};
-                char hh[3]={tic_val[0],tic_val[1],0};
-                char mn[3]={tic_val[2],tic_val[3],0};
-                char ss[3]={tic_val[4],tic_val[5],0};
-                snprintf(resmed_time, sizeof(resmed_time), "%s-%s-%s %s:%s",
-                         yyyy, mm, dd, hh, mn);
-            }
+        char *dv = strstr(dac_resp, "= "), *tv = strstr(tic_resp, "= ");
+        if (dv && tv) {
+            struct tm t = {};
+            if (strptime(dv + 2, "%d%m%Y", &t) && strptime(tv + 2, "%H%M%S", &t))
+                strftime(resmed_time, sizeof(resmed_time), "%Y-%m-%d %H:%M", &t);
         }
     }
 

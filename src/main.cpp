@@ -141,16 +141,68 @@ void setup() {
 
     if (wifi_ok) OtaManager::init();
 
+    // If NTP didn't sync, fall back to resmed device clock
+    if (!WiFiSetup::time_synced()) {
+        char dac_resp[16] = {}, tic_resp[16] = {};
+        uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
+        Arbiter::send_cmd("G S #DAC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, dac_resp, &dac_len);
+        Arbiter::send_cmd("G S #TIC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, tic_resp, &tic_len);
+        char *dv = strstr(dac_resp, "= "), *tv = strstr(tic_resp, "= ");
+        if (dv && tv) {
+            struct tm t = {};
+            if (strptime(dv + 2, "%d%m%Y", &t) && strptime(tv + 2, "%H%M%S", &t))
+                WiFiSetup::set_fallback_time(t.tm_year + 1900, t.tm_mon + 1,
+                                             t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+        }
+    }
+
     BleOxi::init();
     Log::logf(CAT_INIT, LOG_INFO, "[INIT] BLE oximetry started\n");
 
     Log::logf(CAT_INIT, LOG_INFO, "[INIT] All systems go\n");
 }
 
+static bool resmed_time_set = false;
+
+static void sync_resmed_clock() {
+    if (resmed_time_set || !WiFiSetup::time_synced()) return;
+
+    system_state_t st = Arbiter::get_state();
+    if (st != SYS_IDLE && st != SYS_THERAPY) return;
+
+    struct tm t;
+    time_t now = time(nullptr);
+    localtime_r(&now, &t);
+
+    char dac_cmd[32], tic_cmd[32];
+    snprintf(dac_cmd, sizeof(dac_cmd), "P S #DAC %02d%02d%04d",
+             t.tm_mday, t.tm_mon + 1, t.tm_year + 1900);
+    snprintf(tic_cmd, sizeof(tic_cmd), "P S #TIC %02d%02d%02d",
+             t.tm_hour, t.tm_min, t.tm_sec);
+
+    char resp[16] = {};
+    uint16_t resp_len = sizeof(resp);
+    bool ok_dac = Arbiter::send_cmd(dac_cmd, CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &resp_len);
+    resp_len = sizeof(resp);
+    bool ok_tic = Arbiter::send_cmd(tic_cmd, CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &resp_len);
+
+    if (ok_dac && ok_tic) {
+        Log::logf(CAT_INIT, LOG_INFO, "[INIT] ResMed clock set: %02d%02d%04d %02d%02d%02d\n",
+                  t.tm_mday, t.tm_mon + 1, t.tm_year + 1900,
+                  t.tm_hour, t.tm_min, t.tm_sec);
+    } else {
+        Log::logf(CAT_INIT, LOG_WARN, "[INIT] ResMed clock set failed (dac=%d tic=%d)\n",
+                  ok_dac, ok_tic);
+    }
+    resmed_time_set = true;
+}
+
 void loop() {
     serial_poll();
 
     OtaManager::handle();
+
+    sync_resmed_clock();
 
     // health monitoring
     if (millis() - last_health_poll >= HEALTH_POLL_INTERVAL_MS) {
