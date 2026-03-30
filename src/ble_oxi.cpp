@@ -1,4 +1,5 @@
 #include "ble_oxi.h"
+#include "wifi.h"
 #include "uart_arbiter.h"
 #include "debug_log.h"
 #include "app_config.h"
@@ -21,6 +22,7 @@ static NimBLEUUID HR_MEASUREMENT_UUID((uint16_t)0x2A37);
 // Nonin proprietary
 static NimBLEUUID NONIN_OXI_SERVICE_UUID("46A970E0-0D5F-11E2-8B5E-0002A5D5C51B");
 static NimBLEUUID NONIN_CONTINUOUS_UUID("0AAD7EA0-0D60-11E2-8E3C-0002A5D5C51B");
+static NimBLEUUID NONIN_CONTROL_POINT_UUID("1447AF80-0D60-11E2-88B6-0002A5D5C51B");
 
 static TaskHandle_t oxi_task_handle = nullptr;
 static volatile oxi_state_t state = OXI_DISABLED;
@@ -227,6 +229,40 @@ static bool subscribe_services(NimBLEClient *cl) {
     return got_spo2 || got_hr;
 }
 
+// Set date/time on Nonin devices so stored records have correct timestamps.
+static void set_nonin_datetime(NimBLEClient *cl) {
+    if (!WiFiSetup::time_synced()) {
+        Log::logf(CAT_BLE, LOG_WARN, "[BLE] Skipping Nonin datetime — NTP not synced\n");
+        return;
+    }
+
+    NimBLERemoteService *svc = cl->getService(NONIN_OXI_SERVICE_UUID);
+    if (!svc) return;
+
+    NimBLERemoteCharacteristic *cp = svc->getCharacteristic(NONIN_CONTROL_POINT_UUID);
+    if (!cp || !cp->canWrite()) {
+        Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Nonin control point not writable\n");
+        return;
+    }
+
+    struct tm timeinfo;
+    time_t now = time(nullptr);
+    localtime_r(&now, &timeinfo);
+
+    char ts[13];
+    strftime(ts, sizeof(ts), "%y%m%d%H%M%S", &timeinfo);
+
+    uint8_t cmd[] = {0x60, 0x4E, 0x4D, 0x49, 0x12, 0x44, 0x54, 0x4D, 0x3D,
+                     0,0,0,0,0,0,0,0,0,0,0,0, 0x0D, 0x0A};
+    memcpy(cmd + 9, ts, 12);
+
+    if (cp->writeValue(cmd, sizeof(cmd), true)) {
+        Log::logf(CAT_BLE, LOG_INFO, "[BLE] Nonin datetime set: %s\n", ts);
+    } else {
+        Log::logf(CAT_BLE, LOG_WARN, "[BLE] Nonin datetime write failed\n");
+    }
+}
+
 
 // Persistent L-frame state: sequence counter and alive toggle bit
 static uint8_t oxh_seq    = 0;
@@ -409,6 +445,7 @@ void BleOxi::task(void *param) {
                     }
 
                     if (subscribe_services(pClient)) {
+                        set_nonin_datetime(pClient);
                         set_state(OXI_STREAMING);
                         Log::logf(CAT_BLE, LOG_INFO, "[BLE] Streaming started\n");
                         if (cfg.oxi_auto_start) {
