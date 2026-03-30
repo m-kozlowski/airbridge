@@ -448,6 +448,7 @@ void BleOxi::task(void *param) {
                         set_nonin_datetime(pClient);
                         set_state(OXI_STREAMING);
                         Log::logf(CAT_BLE, LOG_INFO, "[BLE] Streaming started\n");
+                        Arbiter::lcd_message("Oximeter Connected");
                         if (cfg.oxi_auto_start) {
                             feeding = true;
                             Log::logf(CAT_BLE, LOG_INFO, "[BLE] Feeding started (auto)\n");

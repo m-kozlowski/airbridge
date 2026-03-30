@@ -399,3 +399,21 @@ uint32_t Arbiter::get_tx_count()       { return stat_tx; }
 uint32_t Arbiter::get_rx_count()       { return stat_rx; }
 uint32_t Arbiter::get_timeout_count()  { return stat_timeout; }
 uint32_t Arbiter::get_error_count()    { return stat_error; }
+
+void Arbiter::lcd_message(const char *msg) {
+    char cmd[32], resp[8];
+    uint16_t rlen;
+    rlen = sizeof(resp);
+    send_cmd("P S #LCA 0000", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
+    snprintf(cmd, sizeof(cmd), "P S #LCT %s", msg);
+    rlen = sizeof(resp);
+    send_cmd(cmd, CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
+    rlen = sizeof(resp);
+    send_cmd("P S #LCA 0001", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
+}
+
+void Arbiter::lcd_clear() {
+    char resp[8];
+    uint16_t rlen = sizeof(resp);
+    send_cmd("P S #LCA 0000", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
+}
