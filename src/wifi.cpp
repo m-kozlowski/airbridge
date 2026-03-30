@@ -7,6 +7,7 @@
 
 static bool sta_connected = false;
 static volatile bool ntp_synced = false;
+static bool ap_fallback = false;
 
 static void ntp_sync_cb(struct timeval *tv) {
     ntp_synced = true;
@@ -76,27 +77,49 @@ bool WiFiSetup::init() {
             sta_connected = true;
             sync_ntp();
             return true;
-        } else {
-            Log::logf(CAT_TCP, LOG_WARN, "\n[WIFI] STA connect failed, falling back to AP\n");
-            cfg.wifi_mode = 1;
         }
+
+        // STA failed - start AP+STA so device is reachable while retrying
+        Log::logf(CAT_TCP, LOG_WARN, "\n[WIFI] STA connect failed, AP+STA fallback\n");
+        ap_fallback = true;
+        WiFi.mode(WIFI_AP_STA);
+        String ap_ssid = cfg.hostname + "_" +
+                         String((uint32_t)ESP.getEfuseMac(), HEX);
+        WiFi.softAP(ap_ssid.c_str(), "airbridge");
+        WiFi.begin(cfg.wifi_ssid.c_str(), cfg.wifi_pass.c_str());
+        delay(100);
+        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] AP: %s (%s), STA retrying in background\n",
+                  ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
+        return true;
     }
 
-    // AP mode (explicit or fallback)
+    // Pure AP mode (explicit, or no SSID configured)
     WiFi.mode(WIFI_AP);
     String ap_ssid = cfg.hostname + "_" +
                      String((uint32_t)ESP.getEfuseMac(), HEX);
     WiFi.softAP(ap_ssid.c_str(), "airbridge");
     delay(100);
 
-    if (cfg.wifi_mode == 1) {
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] AP mode: SSID=%s IP=%s\n",
+    if (cfg.wifi_ssid.length() == 0) {
+        Log::logf(CAT_TCP, LOG_WARN, "[WIFI] No SSID configured, AP only: %s %s\n",
                   ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
     } else {
-        Log::logf(CAT_TCP, LOG_WARN, "[WIFI] No SSID configured, AP fallback: %s IP=%s\n",
+        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] AP mode: %s %s\n",
                   ap_ssid.c_str(), WiFi.softAPIP().toString().c_str());
     }
     return true;
+}
+
+void WiFiSetup::check() {
+    if (!ap_fallback || sta_connected) return;
+
+    if (WiFi.status() == WL_CONNECTED) {
+        sta_connected = true;
+        ap_fallback = false;
+        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] STA connected in background: %s\n",
+                  WiFi.localIP().toString().c_str());
+        sync_ntp();
+    }
 }
 
 bool WiFiSetup::is_connected() {

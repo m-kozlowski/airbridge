@@ -201,6 +201,7 @@ void loop() {
     serial_poll();
 
     OtaManager::handle();
+    WiFiSetup::check();
 
     sync_resmed_clock();
 
