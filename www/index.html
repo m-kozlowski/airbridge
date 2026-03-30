@@ -796,6 +796,134 @@ async function saveSettings(group) {
   }
 }
 
+// TZ string generator
+
+var TZ_ABBR = {
+  'Europe/London':['GMT','BST'],'Europe/Paris':['CET','CEST'],
+  'Europe/Berlin':['CET','CEST'],'Europe/Warsaw':['CET','CEST'],
+  'Europe/Helsinki':['EET','EEST'],'Europe/Istanbul':['TRT',null],
+  'Europe/Moscow':['MSK',null],'Asia/Tokyo':['JST',null],
+  'Asia/Shanghai':['CST',null],'Asia/Hong_Kong':['HKT',null],
+  'Asia/Singapore':['SGT',null],'Asia/Seoul':['KST',null],
+  'Asia/Kolkata':['IST',null],'Asia/Dubai':['GST',null],
+  'Asia/Jerusalem':['IST','IDT'],'Asia/Bangkok':['ICT',null],
+  'Asia/Karachi':['PKT',null],'Asia/Dhaka':['BST',null],
+  'Asia/Kathmandu':['NPT',null],
+  'America/New_York':['EST','EDT'],'America/Chicago':['CST','CDT'],
+  'America/Denver':['MST','MDT'],'America/Los_Angeles':['PST','PDT'],
+  'America/Anchorage':['AKST','AKDT'],'Pacific/Honolulu':['HST',null],
+  'America/Toronto':['EST','EDT'],'America/Mexico_City':['CST',null],
+  'America/Sao_Paulo':['BRT',null],
+  'America/Argentina/Buenos_Aires':['ART',null],
+  'Africa/Cairo':['EET',null],'Africa/Lagos':['WAT',null],
+  'Africa/Nairobi':['EAT',null],
+  'Australia/Sydney':['AEST','AEDT'],
+  'Pacific/Auckland':['NZST','NZDT'],'Pacific/Fiji':['FJT','FJST'],
+};
+
+function tzOff(d, tz) {
+  return (new Date(d.toLocaleString('en-US',{timeZone:tz})) -
+          new Date(d.toLocaleString('en-US',{timeZone:'UTC'}))) / 60000;
+}
+
+function tzAbbr(d, tz, isDst) {
+  var entry = TZ_ABBR[tz];
+  if (entry) { var a = isDst ? entry[1] : entry[0]; if (a) return a; }
+  var a = new Intl.DateTimeFormat('en-US',{timeZone:tz,timeZoneName:'short'})
+    .formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value;
+  return /^[A-Za-z]+$/.test(a) ? a : '<'+a+'>';
+}
+
+function tzFmtOff(o) {
+  var h = (-o/60)|0, m = Math.abs(o%60);
+  return h + (m ? ':'+String(m).padStart(2,'0') : '');
+}
+
+function tzFmtTrans(tz, ref, yr) {
+  var ro = tzOff(ref, tz), ts = null, te = null;
+  for (var m=0; m<12; m++) {
+    var d1=new Date(yr,m,1), d2=new Date(yr,m+1,1);
+    if (tzOff(d1,tz)===ro && tzOff(d2,tz)!==ro) { ts=d1.getTime(); te=d2.getTime(); break; }
+  }
+  if (ts===null) return 'J365/25';
+  var lo=ts, hi=te;
+  while (hi-lo>1000) { var mid=lo+((hi-lo)/2|0); if(tzOff(new Date(mid),tz)===ro) lo=mid; else hi=mid; }
+  var w = new Date(hi + ro * 60000);
+  var month=w.getUTCMonth()+1, day=w.getUTCDate(), wd=w.getUTCDay();
+  var h=w.getUTCHours(), min=w.getUTCMinutes(), sec=w.getUTCSeconds();
+  var dim = new Date(Date.UTC(w.getUTCFullYear(), month, 0)).getUTCDate();
+  var n = (day + 7 > dim) ? 5 : Math.ceil(day / 7);
+  var s = 'M'+month+'.'+n+'.'+wd;
+  if (h!==2||min||sec) {
+    s += '/'+h;
+    if (min||sec) { s+=':'+String(min).padStart(2,'0'); if(sec) s+=':'+String(sec).padStart(2,'0'); }
+  }
+  return s;
+}
+
+function getPosixTz(tz) {
+  var yr=new Date().getFullYear(), jan=new Date(yr,0,1), jun=new Date(yr,5,1);
+  var jo=tzOff(jan,tz), juo=tzOff(jun,tz);
+  var so=Math.min(jo,juo), dlo=Math.max(jo,juo);
+  var std=so===jo?jan:jun, dlt=dlo===jo?jan:jun;
+  var s = tzAbbr(std,tz,false)+tzFmtOff(so);
+  if (so!==dlo) {
+    s += tzAbbr(dlt,tz,true);
+    if (dlo!==so+60) s += tzFmtOff(dlo);
+    s += ','+tzFmtTrans(tz,std,yr)+','+tzFmtTrans(tz,dlt,yr);
+  }
+  return s;
+}
+
+var TZ_ZONES = ['Pacific/Honolulu','America/Anchorage','America/Los_Angeles','America/Denver',
+  'America/Chicago','America/New_York','America/Toronto','America/Sao_Paulo',
+  'America/Argentina/Buenos_Aires','America/Mexico_City','Europe/London','Europe/Paris',
+  'Europe/Berlin','Europe/Warsaw','Europe/Helsinki','Europe/Moscow','Europe/Istanbul',
+  'Africa/Cairo','Africa/Lagos','Africa/Nairobi','Asia/Dubai','Asia/Karachi',
+  'Asia/Kolkata','Asia/Kathmandu','Asia/Dhaka','Asia/Bangkok','Asia/Shanghai',
+  'Asia/Hong_Kong','Asia/Singapore','Asia/Tokyo','Asia/Seoul','Asia/Jerusalem',
+  'Australia/Sydney','Pacific/Auckland','Pacific/Fiji'].sort();
+
+function attachTzHelper(inp) {
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
+  inp.parentNode.insertBefore(wrap, inp);
+  wrap.appendChild(inp);
+
+  var btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.style.cssText = 'padding:4px 10px;font-size:12px';
+  btn.textContent = 'detect';
+  wrap.appendChild(btn);
+
+  var sel = document.createElement('select');
+  sel.style.cssText = 'font-size:12px;background:#1a1a2e;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px;padding:4px';
+  var o0 = document.createElement('option');
+  o0.value = ''; o0.textContent = 'preset...';
+  sel.appendChild(o0);
+  TZ_ZONES.forEach(function(tz) {
+    var o = document.createElement('option'); o.value = tz; o.textContent = tz;
+    sel.appendChild(o);
+  });
+  wrap.appendChild(sel);
+
+  btn.onclick = function() {
+    try {
+      var detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      inp.value = getPosixTz(detected);
+      inp.title = detected;
+    } catch(e) { inp.value = 'detection failed'; }
+  };
+
+  sel.onchange = function() {
+    if (sel.value) {
+      try { inp.value = getPosixTz(sel.value); inp.title = sel.value; }
+      catch(e) { inp.value = 'error'; }
+    }
+  };
+}
+
+
 async function loadConfig() {
   const sp = document.getElementById('configSpinner');
   sp.style.display = 'block';
@@ -812,6 +940,7 @@ async function loadConfig() {
       row.innerHTML = `<label>${k}</label>
 <input type="${isPass?'password':'text'}" data-key="${k}" value="${isPass?'':v}">`;
       el.appendChild(row);
+      if (k === 'tz') attachTzHelper(row.querySelector('input'));
     }
   } catch (e) {
     console.error(e);
