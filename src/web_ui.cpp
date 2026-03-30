@@ -140,7 +140,7 @@ static void handleStatus(AsyncWebServerRequest *request) {
     int rop = -1;
     readSetting("ROP", rop);
 
-    char dac_resp[16] = {}, tic_resp[16] = {};
+    char dac_resp[32] = {}, tic_resp[32] = {};
     uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
     bool got_dac = Arbiter::send_cmd("G S #DAC", CMD_SRC_TCP, CMD_PRIO_NORMAL, dac_resp, &dac_len);
     bool got_tic = Arbiter::send_cmd("G S #TIC", CMD_SRC_TCP, CMD_PRIO_NORMAL, tic_resp, &tic_len);
@@ -158,15 +158,18 @@ static void handleStatus(AsyncWebServerRequest *request) {
                  t.tm_hour, t.tm_min);
     }
 
-    // DAC response: "= DDMMYYYY"
-    // TIC response: "= HHmmSS"
     char resmed_time[20] = "--";
     if (got_dac && got_tic) {
         char *dv = strstr(dac_resp, "= "), *tv = strstr(tic_resp, "= ");
-        if (dv && tv) {
-            struct tm t = {};
-            if (strptime(dv + 2, "%d%m%Y", &t) && strptime(tv + 2, "%H%M%S", &t))
-                strftime(resmed_time, sizeof(resmed_time), "%Y-%m-%d %H:%M", &t);
+        if (dv && tv && strlen(dv+2) >= 8 && strlen(tv+2) >= 6) {
+            dv += 2; tv += 2;
+            // Insert separators so sscanf can parse fixed-width fields
+            int dd, mm, yyyy, hh, mn, ss;
+            if (sscanf(dv, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
+                sscanf(tv, "%2d%2d%2d", &hh, &mn, &ss) == 3) {
+                snprintf(resmed_time, sizeof(resmed_time), "%04d-%02d-%02d %02d:%02d",
+                         yyyy, mm, dd, hh, mn);
+            }
         }
     }
 

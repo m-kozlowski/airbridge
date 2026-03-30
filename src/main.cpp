@@ -143,16 +143,16 @@ void setup() {
 
     // If NTP didn't sync, fall back to resmed device clock
     if (!WiFiSetup::time_synced()) {
-        char dac_resp[16] = {}, tic_resp[16] = {};
+        char dac_resp[32] = {}, tic_resp[32] = {};
         uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
         Arbiter::send_cmd("G S #DAC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, dac_resp, &dac_len);
         Arbiter::send_cmd("G S #TIC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, tic_resp, &tic_len);
         char *dv = strstr(dac_resp, "= "), *tv = strstr(tic_resp, "= ");
-        if (dv && tv) {
-            struct tm t = {};
-            if (strptime(dv + 2, "%d%m%Y", &t) && strptime(tv + 2, "%H%M%S", &t))
-                WiFiSetup::set_fallback_time(t.tm_year + 1900, t.tm_mon + 1,
-                                             t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+        if (dv && tv && strlen(dv+2) >= 8 && strlen(tv+2) >= 6) {
+            int dd, mm, yyyy, hh, mn, ss;
+            if (sscanf(dv+2, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
+                sscanf(tv+2, "%2d%2d%2d", &hh, &mn, &ss) == 3)
+                WiFiSetup::set_fallback_time(yyyy, mm, dd, hh, mn, ss);
         }
     }
 
