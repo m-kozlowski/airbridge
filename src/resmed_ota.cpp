@@ -217,11 +217,11 @@ static bool check_bid(const esp_partition_t *part, size_t blx_partition_offset, 
 
     strncpy(flash_phase, "BID check", sizeof(flash_phase));
 
-    char img_bid[64] = {};
+    char img_bid[32] = {};
     esp_partition_read(part, blx_partition_offset + BID_OFFSET_SX577,
                        img_bid, sizeof(img_bid) - 1);
 
-    char dev_bid[128] = {};
+    char dev_bid[32] = {};
     if (!send_and_check("G S #BID", dev_bid, sizeof(dev_bid))) {
         snprintf(flash_error, sizeof(flash_error), "Failed to read device BID");
         return false;
@@ -241,7 +241,7 @@ static bool check_bid(const esp_partition_t *part, size_t blx_partition_offset, 
 
 
 static bool enter_bootloader(bool send_bll = true) {
-    char resp[128] = {};
+    char resp[48] = {};
     strncpy(flash_phase, "Enter bootloader", sizeof(flash_phase));
     Log::logf(CAT_OTA, LOG_INFO, "[OTA] Entering bootloader (bll=%s)...\n", send_bll ? "yes" : "no");
 
@@ -472,7 +472,7 @@ static bool flash_one_block(const esp_partition_t *part, size_t part_offset,
 
 static void flash_task(void *param) {
     flash_params_t *p = (flash_params_t*)param;
-    char resp[128] = {};
+    char resp[48] = {};
     bool is_full = (strcmp(p->block, "FULL") == 0);
 
     flash_active = true;
@@ -545,7 +545,7 @@ static void flash_task(void *param) {
             Arbiter::set_baud(57600);
 
             // Verify still in bootloader
-            char bl_resp[128] = {};
+            char bl_resp[48] = {};
             if (!send_raw_cmd("G S #BLS", bl_resp, sizeof(bl_resp), 500)) {
                 snprintf(flash_error, sizeof(flash_error),
                          "Lost bootloader after BLX flash");
