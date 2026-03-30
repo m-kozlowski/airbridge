@@ -43,32 +43,32 @@ def minify_html(html):
 
     return html
 
-def generate_web_header(source, target, env):
-    project_dir = env.get("PROJECT_DIR", ".")
-    html_path = os.path.join(project_dir, "www", "index.html")
-    header_path = os.path.join(project_dir, "src", "web_ui_html.h")
+project_dir = env.get("PROJECT_DIR", ".")
+html_path = os.path.join(project_dir, "www", "index.html")
+header_path = os.path.join(project_dir, "src", "web_ui_html.h")
 
-    if not os.path.exists(html_path):
-        print(f"[web_ui] ERROR: {html_path} not found")
-        sys.exit(1)
+if os.path.exists(html_path):
+    needs_update = not os.path.exists(header_path) or \
+                   os.path.getmtime(html_path) > os.path.getmtime(header_path)
 
-    with open(html_path, "r") as f:
-        raw = f.read()
+    if needs_update:
+        with open(html_path, "r") as f:
+            raw = f.read()
 
-    minified = minify_html(raw)
-    compressed = gzip.compress(minified.encode("utf-8"), compresslevel=9)
+        minified = minify_html(raw)
+        compressed = gzip.compress(minified.encode("utf-8"), compresslevel=9)
 
-    with open(header_path, "w") as f:
-        f.write("// Auto-generated from www/index.html, do not edit!\n")
-        f.write("#pragma once\n")
-        f.write("#include <stdint.h>\n\n")
-        f.write(f"#define HTML_PAGE_GZ_SIZE {len(compressed)}\n\n")
-        f.write("static const uint8_t HTML_PAGE_GZ[] PROGMEM = {\n")
-        for i in range(0, len(compressed), 16):
-            chunk = compressed[i:i+16]
-            f.write("    " + ", ".join(f"0x{b:02x}" for b in chunk) + ",\n")
-        f.write("};\n")
+        with open(header_path, "w") as f:
+            f.write("// Auto-generated from www/index.html, do not edit!\n")
+            f.write("#pragma once\n")
+            f.write("#include <stdint.h>\n\n")
+            f.write(f"#define HTML_PAGE_GZ_SIZE {len(compressed)}\n\n")
+            f.write("static const uint8_t HTML_PAGE_GZ[] PROGMEM = {\n")
+            for i in range(0, len(compressed), 16):
+                chunk = compressed[i:i+16]
+                f.write("    " + ", ".join(f"0x{b:02x}" for b in chunk) + ",\n")
+            f.write("};\n")
 
-    print(f"[web_ui] {html_path} ({len(raw)} -> {len(minified)} minified -> {len(compressed)} gzipped)")
-
-env.AddPreAction("$BUILD_DIR/src/web_ui.cpp.o", generate_web_header)
+        print(f"[web_ui] {html_path} ({len(raw)} -> {len(minified)} minified -> {len(compressed)} gzipped)")
+else:
+    print(f"[web_ui] WARNING: {html_path} not found")
