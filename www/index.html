@@ -528,7 +528,19 @@ function showTab(id) {
     if (pane) pane.classList.toggle('active', t === id);
   });
   window.location.hash = id;
-  if (id === 'status') loadStatus();
+  if (id === 'status') {
+    loadStatus();
+    if (!window._statusTimer) {
+      var scheduleNext = function() {
+        var ms = 60000 - (Date.now() % 60000) + 500;
+        window._statusTimer = setTimeout(function tick() {
+          if (document.getElementById('status').classList.contains('active')) loadStatus();
+          window._statusTimer = setTimeout(tick, 60000 - (Date.now() % 60000) + 500);
+        }, ms);
+      };
+      scheduleNext();
+    }
+  }
   if (id === 'report') loadReport();
   if (['patient', 'clinical', 'climate'].includes(id) && !settings.length) loadSettings();
   if (id === 'bluetooth') loadBle();
@@ -564,6 +576,7 @@ function renderStatus(d) {
   const spo2 = d.spo2 >= 0 ? d.spo2 + '%' : '--';
   const pulse = d.pulse >= 0 ? d.pulse + ' bpm' : '--';
   const rows = [
+    ['Time', d.esp_time || '--', 'ResMed Time', d.resmed_time || '--'],
     ['Version', d.version, 'Built', d.built],
     ['System', d.system, 'Device State', rop],
     ['Product', d.pna || '--', 'Serial', d.srn || '--'],

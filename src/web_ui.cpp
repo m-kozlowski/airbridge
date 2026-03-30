@@ -9,6 +9,7 @@
 
 #include <ESPAsyncWebServer.h>
 #include <esp_partition.h>
+#include <time.h>
 #include <NimBLEDevice.h>
 extern "C" {
 #include "nimble/nimble/host/include/host/ble_store.h"
@@ -139,8 +140,45 @@ static void handleStatus(AsyncWebServerRequest *request) {
     int rop = -1;
     readSetting("ROP", rop);
 
+    char dac_resp[16] = {}, tic_resp[16] = {};
+    uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
+    bool got_dac = Arbiter::send_cmd("G S #DAC", CMD_SRC_TCP, CMD_PRIO_NORMAL, dac_resp, &dac_len);
+    bool got_tic = Arbiter::send_cmd("G S #TIC", CMD_SRC_TCP, CMD_PRIO_NORMAL, tic_resp, &tic_len);
+
     Config::refresh_device_info();
     auto &cfg = Config::get();
+
+    char esp_time[20] = "--";
+    time_t now = time(nullptr);
+    if (now > 1700000000) {
+        struct tm t;
+        localtime_r(&now, &t);
+        snprintf(esp_time, sizeof(esp_time), "%04d-%02d-%02d %02d:%02d",
+                 t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                 t.tm_hour, t.tm_min);
+    }
+
+    // DAC response: "= DDMMYYYY"
+    // TIC response: "= HHmmSS"
+    char resmed_time[20] = "--";
+    if (got_dac && got_tic) {
+        char *dac_val = strstr(dac_resp, "= ");
+        char *tic_val = strstr(tic_resp, "= ");
+        if (dac_val && tic_val) {
+            dac_val += 2;
+            tic_val += 2;
+            if (strlen(dac_val) >= 8 && strlen(tic_val) >= 6) {
+                char dd[3]={dac_val[0],dac_val[1],0};
+                char mm[3]={dac_val[2],dac_val[3],0};
+                char yyyy[5]={dac_val[4],dac_val[5],dac_val[6],dac_val[7],0};
+                char hh[3]={tic_val[0],tic_val[1],0};
+                char mn[3]={tic_val[2],tic_val[3],0};
+                char ss[3]={tic_val[4],tic_val[5],0};
+                snprintf(resmed_time, sizeof(resmed_time), "%s-%s-%s %s:%s",
+                         yyyy, mm, dd, hh, mn);
+            }
+        }
+    }
 
     String json = "{";
     jsonAddString(json, "version", airbridge_version(), false);
@@ -149,6 +187,8 @@ static void handleStatus(AsyncWebServerRequest *request) {
     jsonAddInt(json, "rop", rop);
     jsonAddString(json, "pna", cfg.device_pna.c_str());
     jsonAddString(json, "srn", cfg.device_srn.c_str());
+    jsonAddString(json, "esp_time", esp_time);
+    jsonAddString(json, "resmed_time", resmed_time);
     jsonAddString(json, "oxi", oxi_names[oxi]);
     jsonAddString(json, "feeding", BleOxi::is_feeding() ? "yes" : "no");
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
