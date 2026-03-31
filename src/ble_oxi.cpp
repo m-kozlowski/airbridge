@@ -349,6 +349,7 @@ void BleOxi::task(void *param) {
     while (true) {
         if (disconnect_requested) {
             disconnect_requested = false;
+            Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Disconnect requested\n");
             if (pClient->isConnected()) pClient->disconnect();
             feeding = false;
             set_state(OXI_DISABLED);
@@ -357,8 +358,8 @@ void BleOxi::task(void *param) {
         if (scan_complete) {
             scan_complete = false;
             if (state == OXI_SCANNING) {
+                Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Scan done, %d results\n", scan_result_count);
                 set_state(OXI_DISCONNECTED);
-                // Auto-connect
                 if (scan_result_count > 0) {
                     String target = cfg.oxi_device_addr;
                     bool found = false;
@@ -366,26 +367,29 @@ void BleOxi::task(void *param) {
                         for (int i = 0; i < scan_result_count; i++) {
                             if (scan_results[i].addr.equalsIgnoreCase(target)) {
                                 found = true;
+                                Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Target %s found in scan\n", target.c_str());
                                 break;
                             }
                         }
+                        if (!found) Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Target %s not in scan results\n", target.c_str());
                     } else {
-                        // No configured address - auto-connect to first found,
-                        // but skip unbonded Nonin (needs 2-min pairing window)
                         for (int i = 0; i < scan_result_count; i++) {
                             if (scan_results[i].name.startsWith("Nonin")) {
                                 NimBLEAddress ba(std::string(scan_results[i].addr.c_str()), scan_results[i].addr_type);
-                                if (NimBLEDevice::isBonded(ba)) {
-                                    found = true;
-                                    break;
-                                }
+                                bool bonded = NimBLEDevice::isBonded(ba);
+                                Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] %s %s bonded=%d\n",
+                                          scan_results[i].name.c_str(), scan_results[i].addr.c_str(), bonded);
+                                if (bonded) { found = true; break; }
                             } else {
                                 found = true;
                                 break;
                             }
                         }
                     }
-                    if (found) connect_requested = true;
+                    if (found) {
+                        connect_requested = true;
+                        Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Auto-connect triggered\n");
+                    }
                 }
             }
         }
@@ -395,6 +399,7 @@ void BleOxi::task(void *param) {
             scan_result_count = 0;
             scan_complete = false;
             set_state(OXI_SCANNING);
+            Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Starting scan (%dms)\n", SCAN_DURATION_MS);
             NimBLEScan *pScan = NimBLEDevice::getScan();
             pScan->setScanCallbacks(&scanCB);
             pScan->setActiveScan(true);
@@ -423,26 +428,60 @@ void BleOxi::task(void *param) {
                         break;
                     }
                 }
+
+                // cancel any pending connection and clean up stale state
+                if (pClient->isConnected()) {
+                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Disconnecting stale connection\n");
+                    pClient->disconnect();
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                } else {
+                    // cancel pending connect that hasn't completed yet (EALREADY)
+                    pClient->cancelConnect();
+                    vTaskDelay(pdMS_TO_TICKS(500));
+                }
+
                 Log::logf(CAT_BLE, LOG_INFO, "[BLE] Connecting to %s (type=%d)...\n", addr.c_str(), atype);
 
                 NimBLEAddress bleAddr(std::string(addr.c_str()), atype);
                 bool ok = pClient->connect(bleAddr);
 
-                // connect() may return false when already connected (EALREADY/EDONE)
-                if (!ok && pClient->isConnected()) {
-                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Already connected (err=%d), proceeding\n",
-                               pClient->getLastError());
-                    ok = true;
+                if (!ok) {
+                    int err = pClient->getLastError();
+                    Log::logf(CAT_BLE, LOG_WARN, "[BLE] connect() returned false (err=%d)\n", err);
+
+                    // EALREADY: previous connect still in flight.
+                    // Wait and check if it actually connected.
+                    if (err == 2) {
+                        Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Waiting for pending connect...\n");
+                        for (int i = 0; i < 50 && !pClient->isConnected(); i++)
+                            vTaskDelay(pdMS_TO_TICKS(200));
+                        ok = pClient->isConnected();
+                        Log::logf(CAT_BLE, LOG_INFO, "[BLE] Pending connect %s\n", ok ? "succeeded" : "failed");
+                    }
+
+                    // EDONE: stale bond. Delete and retry.
+                    if (!ok && err == 13) {
+                        Log::logf(CAT_BLE, LOG_INFO, "[BLE] Removing bond and retrying\n");
+                        NimBLEDevice::deleteBond(bleAddr);
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        ok = pClient->connect(bleAddr);
+                        if (!ok) {
+                            Log::logf(CAT_BLE, LOG_WARN, "[BLE] Retry failed (err=%d)\n",
+                                      pClient->getLastError());
+                        }
+                    }
                 }
 
                 if (ok) {
+                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Connected, waiting for encryption\n");
                     set_state(OXI_BONDING);
 
-                    // Wait for encryption - poll up to 3s
                     for (int i = 0; i < 30 && pClient->isConnected(); i++) {
                         if (pClient->secureConnection()) break;
                         vTaskDelay(pdMS_TO_TICKS(100));
                     }
+                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Encryption: secure=%d connected=%d\n",
+                              pClient->secureConnection(), pClient->isConnected());
 
                     if (subscribe_services(pClient)) {
                         set_nonin_datetime(pClient);
@@ -454,26 +493,23 @@ void BleOxi::task(void *param) {
                             Log::logf(CAT_BLE, LOG_INFO, "[BLE] Feeding started (auto)\n");
                         }
                     } else {
-                        Log::logf(CAT_BLE, LOG_WARN, "[BLE] No suitable services\n");
+                        Log::logf(CAT_BLE, LOG_WARN, "[BLE] No suitable services, disconnecting\n");
                         pClient->disconnect();
                         set_state(OXI_DISCONNECTED);
                     }
                 } else {
-                    int err = pClient->getLastError();
-                    if (err == 13) {  // BLE_HS_EDONE
-                        Log::logf(CAT_BLE, LOG_WARN, "[BLE] Connect rejected (EDONE) - device may need power cycle for pairing window\n");
-                    } else {
-                        Log::logf(CAT_BLE, LOG_WARN, "[BLE] Connect failed, err=%d\n", err);
-                    }
+                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Connect failed, backing off %dms\n", RECONNECT_DELAY_MS);
                     set_state(OXI_DISCONNECTED);
+                    last_reconnect = millis();
                 }
             }
         }
 
-        // Auto-reconnect: always scan first
+        // Auto-reconnect: scan periodically when disconnected
         if (state == OXI_DISCONNECTED && cfg.oxi_enabled &&
             millis() - last_reconnect > RECONNECT_DELAY_MS) {
             last_reconnect = millis();
+            Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Auto-reconnect: starting scan\n");
             scan_requested = true;
         }
 

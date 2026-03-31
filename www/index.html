@@ -450,12 +450,6 @@ function initSSE() {
       updateChartsFromPush(d);
     } catch (ex) {}
   });
-  evtSrc.addEventListener('ble', e => {
-    try {
-      const d = JSON.parse(e.data);
-      updateBleFromPush(d);
-    } catch (ex) {}
-  });
   evtSrc.addEventListener('flash', e => {
     try {
       const d = JSON.parse(e.data);
@@ -471,27 +465,22 @@ let lastStatus = {};
 function updateStatusFromPush(d) {
   Object.assign(lastStatus, d);
   renderStatus(lastStatus);
+  updateBleFromPush(d);
 }
 
 function updateBleFromPush(d) {
-  const p = document.getElementById('p4');
-  if (!p || !p.classList.contains('active')) return;
-  if (d.state !== undefined) {
-    const g = document.getElementById('bleStatusGrid');
-    if (!g) return;
-    const fields = {
-      state: d.state,
-      feeding: d.feeding,
-      spo2: d.spo2 >= 0 ? d.spo2 + '%' : '--',
-      pulse: d.pulse >= 0 ? d.pulse + ' bpm' : '--',
-      configured: d.configured_addr || '(none)',
-      auto_start: d.auto_start
-    };
-    g.innerHTML = '';
-    for (const [k, v] of Object.entries(fields))
-      g.innerHTML += `<div class="stat">
-<span class="k">${k}:</span> <span class="v">${v}</span>
-</div>`;
+  var pane = document.getElementById('bluetooth');
+  if (!pane || !pane.classList.contains('active')) return;
+  var g = document.getElementById('bleStatusGrid');
+  if (!g || !g.children.length) { loadBle(); return; }
+  var fields = {
+    state: d.oxi || d.state, feeding: d.feeding,
+    spo2: d.spo2 >= 0 ? d.spo2 + '%' : '--',
+    pulse: d.pulse >= 0 ? d.pulse + ' bpm' : '--'
+  };
+  for (var k in fields) {
+    var el = g.querySelector('[data-field="' + k + '"]');
+    if (el) el.textContent = fields[k];
   }
 }
 
@@ -1016,7 +1005,7 @@ async function loadBle() {
     };
     for (const [k, v] of Object.entries(fields))
       g.innerHTML += `<div class="stat">
-<span class="k">${k}:</span> <span class="v">${v}</span>
+<span class="k">${k}:</span> <span class="v" data-field="${k}">${v}</span>
 </div>`;
     const fb = document.getElementById('btnFeed');
     if (d.feeding === 'yes') {
