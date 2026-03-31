@@ -79,6 +79,6 @@ namespace Arbiter {
     uint32_t get_timeout_count();
     uint32_t get_error_count();
 
-    void lcd_message(const char *msg);
+    void lcd_message(const char *msg, uint32_t timeout_ms = 0);  // 0 = persistent
     void lcd_clear();
 }

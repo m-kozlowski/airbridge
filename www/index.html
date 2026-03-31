@@ -561,7 +561,6 @@ function renderStatus(d) {
   if (!g || !d.version) return;
   g.innerHTML = '';
   const rop = ROP_NAMES[d.rop] || ('Unknown (' + d.rop + ')');
-  const oxiFeed = d.oxi + (d.feeding === 'yes' ? ' / Feeding' : '');
   const spo2 = d.spo2 >= 0 ? d.spo2 + '%' : '--';
   const pulse = d.pulse >= 0 ? d.pulse + ' bpm' : '--';
   const rows = [
@@ -569,7 +568,7 @@ function renderStatus(d) {
     ['Version', d.version, 'Built', d.built],
     ['System', d.system, 'Device State', rop],
     ['Product', d.pna || '--', 'Serial', d.srn || '--'],
-    ['Oximeter', oxiFeed, 'Feeding', d.feeding || '--'],
+    ['Oximeter', d.oxi || '--', 'Feeding', d.feeding || '--'],
     ['SpO2', spo2, 'Pulse', pulse],
   ];
   rows.forEach(([k1, v1, k2, v2]) => {

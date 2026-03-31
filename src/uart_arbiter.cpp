@@ -165,10 +165,15 @@ static void rx_task(void *param) {
 }
 
 
+static void lcd_check();
+
 static void arbiter_task(void *param) {
     while (true) {
         uart_ticket_t *t = pq_pop(pdMS_TO_TICKS(100));
-        if (!t) continue;
+        if (!t) {
+            lcd_check();
+            continue;
+        }
 
         // Send frame
         current_ticket = t;
@@ -400,7 +405,9 @@ uint32_t Arbiter::get_rx_count()       { return stat_rx; }
 uint32_t Arbiter::get_timeout_count()  { return stat_timeout; }
 uint32_t Arbiter::get_error_count()    { return stat_error; }
 
-void Arbiter::lcd_message(const char *msg) {
+static uint32_t lcd_clear_at = 0;
+
+void Arbiter::lcd_message(const char *msg, uint32_t timeout_ms) {
     char cmd[32], resp[8];
     uint16_t rlen;
     rlen = sizeof(resp);
@@ -410,10 +417,24 @@ void Arbiter::lcd_message(const char *msg) {
     send_cmd(cmd, CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
     rlen = sizeof(resp);
     send_cmd("P S #LCA 0001", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
+
+    lcd_clear_at = timeout_ms ? millis() + timeout_ms : 0;
 }
 
 void Arbiter::lcd_clear() {
     char resp[8];
     uint16_t rlen = sizeof(resp);
     send_cmd("P S #LCA 0000", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &rlen);
+    lcd_clear_at = 0;
+}
+
+// Called from arbiter task idle loop, can't use send_cmd
+static void lcd_check() {
+    if (lcd_clear_at && millis() >= lcd_clear_at) {
+        lcd_clear_at = 0;
+        uint8_t frame[32];
+        int len = qframe_build_cmd("P S #LCA 0000", frame, sizeof(frame));
+        if (len > 0)
+            Arbiter::send_frame(frame, len, CMD_SRC_INTERNAL, CMD_PRIO_LOW);
+    }
 }
