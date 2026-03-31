@@ -411,6 +411,7 @@ void BleOxi::task(void *param) {
         if (connect_requested) {
             connect_requested = false;
             NimBLEDevice::getScan()->stop();
+            vTaskDelay(pdMS_TO_TICKS(50));
 
             String addr = target_addr;
             if (addr.length() == 0 && cfg.oxi_device_addr.length() > 0)
