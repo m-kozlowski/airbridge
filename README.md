@@ -15,7 +15,7 @@ ESP32 bridge for ResMed AirSense 10 CPAP.
 2. Flash: `pio run -t upload`
 3. Open `http://airbridge/` (default login: admin/airbridge)
 
-Without `provision.env`, the device starts in AP mode (`airbridge_XXXX`). Connect to it and configure WiFi via serial console or web UI at `http://192.168.4.1/`.
+Without `provision.env`, the device tries SmartConfig for 60 seconds - use the [EspTouch](https://github.com/EspressifApp/EsptouchForAndroid/releases) app (v1 mode, phone must be on the target WiFi) to send credentials. If SmartConfig times out, it falls back to AP mode (`airbridge_XXXX`) where you can configure WiFi via web UI at `http://192.168.4.1/`.
 
 ## Related tools
 

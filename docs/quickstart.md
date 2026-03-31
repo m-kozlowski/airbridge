@@ -18,15 +18,13 @@ See [hardware.md](hardware.md) for the pinout, wiring diagram, and power notes.
 pio run -t upload
 ```
 
-On first boot, the device creates a WiFi access point:
-- SSID: `airbridge_XXXXXX`
-- Password: `airbridge`
-
 ## Configure WiFi
 
-Connect to the AP, open `http://192.168.4.1/`, go to the **Device** tab, and set your WiFi SSID and password. Set wifi_mode to `0` (station mode). Save and reboot.
+Three options, pick whichever suits you:
 
-Or use provisioning:
+**SmartConfig (no cable needed):** On first boot the device waits 60 seconds for SmartConfig. Install the [EspTouch](https://github.com/EspressifApp/EsptouchForAndroid/releases) app on your phone. Connect your phone to the target WiFi network, select **EspTouch v1**, enter the WiFi password, and hit confirm. The device picks up the credentials and connects automatically. Credentials are saved.
+
+**Provisioning file:** Create `provision.env` from the example and flash:
 
 ```bash
 cp provision.env.example provision.env
@@ -35,6 +33,8 @@ python provision.py <serial port>
 ```
 
 Provisioning also runs automatically after every serial flash (`pio run -t upload`).
+
+**Manual via AP:** If SmartConfig times out, the device creates a WiFi access point (`airbridge_XXXXXX`, password `airbridge`). Connect to it, open `http://192.168.4.1/`, go to the **Device** tab, set your WiFi SSID and password, wifi_mode to `0`. Save and reboot.
 
 ## Verify it works
 
