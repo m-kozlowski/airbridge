@@ -2,6 +2,7 @@
 #include "app_config.h"
 #include "debug_log.h"
 #include <WiFi.h>
+#include <esp_wifi.h>
 #include <esp_sntp.h>
 #include <time.h>
 
@@ -30,25 +31,32 @@ static void sync_ntp() {
     sntp_set_time_sync_notification_cb(ntp_sync_cb);
 
     // NTP server priority:
-    // 1. User-configured
+    // 1. User-configured, ignore DHCP
     // 2. DHCP-provided
     // 3. pool.ntp.org
 
+    if (esp_sntp_enabled()) esp_sntp_stop();
+
+    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+
     if (cfg.ntp_server.length() > 0) {
-        configTzTime(cfg.tz.c_str(), cfg.ntp_server.c_str());
+        // User configured - explicit server, no DHCP
+#if LWIP_DHCP_GET_NTP_SRV
+        esp_sntp_servermode_dhcp(false);
+#endif
+        esp_sntp_setservername(0, cfg.ntp_server.c_str());
         Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP: configured server %s\n",
                   cfg.ntp_server.c_str());
     } else {
-        // Check if DHCP provided a server
-        const char *dhcp_srv = esp_sntp_getservername(1);
-        if (dhcp_srv && dhcp_srv[0]) {
-            configTzTime(cfg.tz.c_str(), dhcp_srv);
-            Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP: DHCP server %s\n", dhcp_srv);
-        } else {
-            configTzTime(cfg.tz.c_str(), "pool.ntp.org");
-            Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP: pool.ntp.org\n");
-        }
+        // Prefer DHCP, pool.ntp.org as fallback
+#if LWIP_DHCP_GET_NTP_SRV
+        esp_sntp_servermode_dhcp(true);
+#endif
+        esp_sntp_setservername(0, "pool.ntp.org");
+        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP: DHCP + pool.ntp.org fallback\n");
     }
+
+    esp_sntp_init();
 }
 
 bool WiFiSetup::init() {
