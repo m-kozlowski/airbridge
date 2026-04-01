@@ -2,7 +2,8 @@
 #include "web_ui_html.h"
 #include "settings_defs.h"
 #include "uart_arbiter.h"
-#include "ble_oxi.h"
+#include "oxi_ble.h"
+#include "oxi_arbiter.h"
 #include "resmed_ota.h"
 #include "debug_log.h"
 #include "app_config.h"
@@ -134,8 +135,8 @@ static void handleStatus(AsyncWebServerRequest *request) {
     };
 
     system_state_t sys = Arbiter::get_state();
-    oxi_state_t oxi = BleOxi::get_state();
-    const oxi_reading_t &r = BleOxi::get_reading();
+    oxi_state_t oxi = OxiBle::get_state();
+    const oxi_reading_t &r = OxiArbiter::get_reading();
 
     int rop = -1;
     readSetting("ROP", rop);
@@ -183,7 +184,7 @@ static void handleStatus(AsyncWebServerRequest *request) {
     jsonAddString(json, "esp_time", esp_time);
     jsonAddString(json, "resmed_time", resmed_time);
     jsonAddString(json, "oxi", oxi_names[oxi]);
-    jsonAddString(json, "feeding", BleOxi::is_feeding() ? "yes" : "no");
+    jsonAddString(json, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
     jsonAddInt(json, "heap", ESP.getFreeHeap());
@@ -553,7 +554,7 @@ static void live_sampler_task(void *param) {
 
         // Build JSON and push via SSE
         {
-            const oxi_reading_t &r = BleOxi::get_reading();
+            const oxi_reading_t &r = OxiArbiter::get_reading();
             String json = "{";
             jsonAddInt(json, "seq", live_seq, false);
             jsonAddInt(json, "press", press);
@@ -591,7 +592,7 @@ static void handleLive(AsyncWebServerRequest *request) {
     uint16_t available = cur_seq - since;
     if (available > LIVE_BUF_SIZE) available = LIVE_BUF_SIZE;
 
-    const oxi_reading_t &r = BleOxi::get_reading();
+    const oxi_reading_t &r = OxiArbiter::get_reading();
 
     String json = "{";
     jsonAddInt(json, "seq", cur_seq, false);
@@ -645,20 +646,20 @@ static void handleBleStatus(AsyncWebServerRequest *request) {
         "STREAMING", "DISCONNECTED"
     };
 
-    oxi_state_t st = BleOxi::get_state();
-    const oxi_reading_t &r = BleOxi::get_reading();
+    oxi_state_t st = OxiBle::get_state();
+    const oxi_reading_t &r = OxiArbiter::get_reading();
     auto &cfg = Config::get();
 
     String json = "{";
     jsonAddString(json, "state", oxi_names[st], false);
-    jsonAddString(json, "feeding", BleOxi::is_feeding() ? "yes" : "no");
+    jsonAddString(json, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
     jsonAddString(json, "configured_addr", cfg.oxi_device_addr.c_str());
     jsonAddString(json, "auto_start", cfg.oxi_auto_start ? "yes" : "no");
 
 
-    String results = BleOxi::get_scan_results();
+    String results = OxiBle::get_scan_results();
     json += ",\"devices\":[";
     if (results.indexOf("(no oximeters") < 0) {
         bool first = true;
@@ -735,42 +736,42 @@ static void handleBleAction(AsyncWebServerRequest *request) {
     bool ok = false;
 
     if (action == "scan") {
-        BleOxi::start_scan();
+        OxiBle::start_scan();
         result = "scan started";
         ok = true;
     } else if (action == "stop_scan") {
-        BleOxi::stop_scan();
+        OxiBle::stop_scan();
         result = "scan stopped";
         ok = true;
     } else if (action == "connect") {
         if (addr.length() > 0) {
-            BleOxi::connect(addr.c_str());
+            OxiBle::connect(addr.c_str());
         } else {
-            BleOxi::connect(nullptr);
+            OxiBle::connect(nullptr);
         }
         result = "connecting";
         ok = true;
     } else if (action == "disconnect") {
-        BleOxi::disconnect();
+        OxiBle::disconnect();
         result = "disconnected";
         ok = true;
     } else if (action == "start_feed") {
-        BleOxi::start_feed();
+        OxiArbiter::start_feed();
         result = "feeding started";
         ok = true;
     } else if (action == "stop_feed") {
-        BleOxi::stop_feed();
+        OxiArbiter::stop_feed();
         result = "feeding stopped";
         ok = true;
     } else if (action == "delete_bond") {
         if (addr.length() > 0) {
             int nb = NimBLEDevice::getNumBonds();
-            Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Deleting bond for %s (%d bonds stored)\n", addr.c_str(), nb);
+            Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] Deleting bond for %s (%d bonds stored)\n", addr.c_str(), nb);
             for (int i = 0; i < nb; i++) {
                 NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
-                Log::logf(CAT_BLE, LOG_DEBUG, "[BLE]   bond[%d]: %s type=%d\n", i, ba.toString().c_str(), ba.getType());
+                Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   bond[%d]: %s type=%d\n", i, ba.toString().c_str(), ba.getType());
             }
-            BleOxi::disconnect();
+            OxiBle::disconnect();
             vTaskDelay(pdMS_TO_TICKS(500));
             bool deleted = false;
             for (int i = 0; i < nb && !deleted; i++) {
@@ -778,13 +779,13 @@ static void handleBleAction(AsyncWebServerRequest *request) {
                 if (strcasecmp(ba.toString().c_str(), addr.c_str()) == 0) {
                     int rc = ble_gap_unpair(ba.getBase());
                     deleted = (rc == 0);
-                    Log::logf(CAT_BLE, LOG_DEBUG, "[BLE]   match at [%d], unpair rc=%d, type=%d\n", i, rc, ba.getType());
+                    Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   match at [%d], unpair rc=%d, type=%d\n", i, rc, ba.getType());
                 }
             }
             /*
             if (!deleted) {
                 // Fall back to clearing all bonds
-                Log::logf(CAT_BLE, LOG_DEBUG, "[BLE]   high-level delete failed, trying ble_store_clear\n");
+                Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   high-level delete failed, trying ble_store_clear\n");
                 ble_store_clear();
                 deleted = (NimBLEDevice::getNumBonds() == 0);
             }
@@ -792,7 +793,7 @@ static void handleBleAction(AsyncWebServerRequest *request) {
             if (deleted && strcasecmp(addr.c_str(), Config::get().oxi_device_addr.c_str()) == 0) {
                 Config::set_value("oxi_device_addr", "");
                 Config::save();
-                Log::logf(CAT_BLE, LOG_INFO, "[BLE] Cleared oxi_device_addr (matched deleted bond)\n");
+                Log::logf(CAT_OXI, LOG_INFO, "[BLE] Cleared oxi_device_addr (matched deleted bond)\n");
             }
             result = deleted ? "bond deleted" : "bond not found";
         } else {
@@ -801,22 +802,22 @@ static void handleBleAction(AsyncWebServerRequest *request) {
         ok = true;
     } else if (action == "delete_all_bonds") {
         int nb = NimBLEDevice::getNumBonds();
-        Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] Deleting all %d bonds\n", nb);
-        BleOxi::disconnect();
+        Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] Deleting all %d bonds\n", nb);
+        OxiBle::disconnect();
         vTaskDelay(pdMS_TO_TICKS(500));
         NimBLEDevice::deleteAllBonds();
         int remaining = NimBLEDevice::getNumBonds();
         if (remaining > 0) {
             // Fall back to low-level store clear
-            Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] High-level delete left %d, trying ble_store_clear\n", remaining);
+            Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] High-level delete left %d, trying ble_store_clear\n", remaining);
             ble_store_clear();
             remaining = NimBLEDevice::getNumBonds();
         }
-        Log::logf(CAT_BLE, LOG_DEBUG, "[BLE] After delete: %d bonds remain\n", remaining);
+        Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] After delete: %d bonds remain\n", remaining);
         if (remaining == 0 && Config::get().oxi_device_addr.length() > 0) {
             Config::set_value("oxi_device_addr", "");
             Config::save();
-            Log::logf(CAT_BLE, LOG_INFO, "[BLE] Cleared oxi_device_addr\n");
+            Log::logf(CAT_OXI, LOG_INFO, "[BLE] Cleared oxi_device_addr\n");
         }
         result = remaining == 0 ? "all bonds deleted" : "delete failed";
         ok = true;
@@ -1135,7 +1136,7 @@ static uint32_t last_status_push = 0;
 
 void WebUI::handle() {
     // Push immediately on BLE state change, or every 3s
-    bool ble_changed = BleOxi::state_changed();
+    bool ble_changed = OxiBle::state_changed();
     if (events && events->count() > 0 && (ble_changed || millis() - last_status_push >= 3000)) {
         last_status_push = millis();
 
@@ -1143,13 +1144,13 @@ void WebUI::handle() {
         static const char *oxi_names[] = {"DISABLED","SCANNING","CONNECTING","BONDING","STREAMING","DISCONNECTED"};
 
         system_state_t sys = Arbiter::get_state();
-        oxi_state_t oxi = BleOxi::get_state();
-        const oxi_reading_t &r = BleOxi::get_reading();
+        oxi_state_t oxi = OxiBle::get_state();
+        const oxi_reading_t &r = OxiArbiter::get_reading();
 
         String sj = "{";
         jsonAddString(sj, "system", sys_names[sys], false);
         jsonAddString(sj, "oxi", oxi_names[oxi]);
-        jsonAddString(sj, "feeding", BleOxi::is_feeding() ? "yes" : "no");
+        jsonAddString(sj, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
         jsonAddInt(sj, "spo2", r.valid ? r.spo2 : -1);
         jsonAddInt(sj, "pulse", r.valid ? r.pulse_bpm : -1);
         jsonAddInt(sj, "heap", ESP.getFreeHeap());

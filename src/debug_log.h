@@ -13,7 +13,7 @@ typedef enum {
 
 typedef enum {
     CAT_GENERAL = 0,
-    CAT_BLE,
+    CAT_OXI,
     CAT_TCP,
     CAT_OTA,
     CAT_WEB,

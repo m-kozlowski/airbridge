@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "uart_arbiter.h"
-#include "ble_oxi.h"
+#include "oxi_ble.h"
+#include "oxi_arbiter.h"
 #include "tcp_bridge.h"
 #include "resmed_ota.h"
 #include "debug_log.h"
@@ -27,8 +28,8 @@ void dispatch_command(const char *line, String &response) {
 
     if (upper == "STATUS") {
         system_state_t sys = Arbiter::get_state();
-        oxi_state_t oxi = BleOxi::get_state();
-        const oxi_reading_t &r = BleOxi::get_reading();
+        oxi_state_t oxi = OxiBle::get_state();
+        const oxi_reading_t &r = OxiArbiter::get_reading();
 
         Config::refresh_device_info();
         auto &cfg = Config::get();
@@ -42,7 +43,7 @@ void dispatch_command(const char *line, String &response) {
             response += "pulse: " + String(r.pulse_bpm) + " bpm\n";
             response += "age: " + String((millis() - r.timestamp_ms) / 1000) + "s\n";
         }
-        response += "feeding: " + String(BleOxi::is_feeding() ? "yes" : "no") + "\n";
+        response += "feeding: " + String(OxiArbiter::is_feeding() ? "yes" : "no") + "\n";
         response += "log_level: " + String(Log::level_name(Log::get_level())) + "\n";
         response += "uart_baud: " + String(Arbiter::get_baud()) + "\n";
         response += "uart_tx: " + String(Arbiter::get_tx_count()) + "\n";
@@ -58,16 +59,16 @@ void dispatch_command(const char *line, String &response) {
         sub.trim();
 
         if (sub == "START") {
-            BleOxi::start_feed();
+            OxiArbiter::start_feed();
             response = "OK: oximetry feed started\n";
         } else if (sub == "STOP") {
-            BleOxi::stop_feed();
+            OxiArbiter::stop_feed();
             response = "OK: oximetry feed stopped\n";
         } else if (sub == "STATUS") {
-            oxi_state_t st = BleOxi::get_state();
-            const oxi_reading_t &r = BleOxi::get_reading();
+            oxi_state_t st = OxiBle::get_state();
+            const oxi_reading_t &r = OxiArbiter::get_reading();
             response = "state: " + String(oxi_state_names[st]) + "\n";
-            response += "feeding: " + String(BleOxi::is_feeding() ? "yes" : "no") + "\n";
+            response += "feeding: " + String(OxiArbiter::is_feeding() ? "yes" : "no") + "\n";
             if (r.valid) {
                 response += "spo2: " + String(r.spo2) + "\n";
                 response += "pulse: " + String(r.pulse_bpm) + "\n";
@@ -75,21 +76,21 @@ void dispatch_command(const char *line, String &response) {
                 response += "data: no valid reading\n";
             }
         } else if (sub == "SCAN") {
-            BleOxi::start_scan();
+            OxiBle::start_scan();
             response = "OK: BLE scan started\n";
         } else if (sub == "RESULTS") {
-            response = BleOxi::get_scan_results();
+            response = OxiBle::get_scan_results();
         } else if (sub.startsWith("CONNECT")) {
             String addr = cmd.substring(12);  // "OXI CONNECT <addr>"
             addr.trim();
             if (addr.length() > 0) {
-                BleOxi::connect(addr.c_str());
+                OxiBle::connect(addr.c_str());
             } else {
-                BleOxi::connect(nullptr);
+                OxiBle::connect(nullptr);
             }
             response = "OK: connecting...\n";
         } else if (sub == "DISCONNECT") {
-            BleOxi::disconnect();
+            OxiBle::disconnect();
             response = "OK: disconnected\n";
         } else {
             response = "ERR: unknown OXI command: " + sub + "\n";
@@ -353,7 +354,7 @@ void dispatch_command(const char *line, String &response) {
                    "  FLASH [block] [BLX] [FORCE]  Flash uploaded firmware\n"
                    "  FLASH STATUS|CANCEL Monitor/cancel flash\n"
                    "  LOG                 Show all category log levels\n"
-                   "  LOG [cat] level     Set log level (cats: BLE TCP OTA WEB ARB HEALTH ALL)\n"
+                   "  LOG [cat] level     Set log level (cats: OXI TCP OTA WEB ARB HEALTH ALL)\n"
                    "  TRANSPARENT         Enter raw UART mode\n"
                    "  VERSION             Firmware version info\n"
                    "  REBOOT              Restart ESP32\n"

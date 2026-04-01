@@ -44,7 +44,7 @@ const char *Log::level_name(log_level_t lvl) {
 const char *Log::cat_name(log_cat_t cat) {
     switch (cat) {
         case CAT_GENERAL: return "GENERAL";
-        case CAT_BLE:     return "BLE";
+        case CAT_OXI:     return "OXI";
         case CAT_TCP:     return "TCP";
         case CAT_OTA:     return "OTA";
         case CAT_WEB:     return "WEB";

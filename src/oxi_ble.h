@@ -17,20 +17,16 @@ typedef struct {
     uint32_t    timestamp_ms;
 } oxi_reading_t;
 
-namespace BleOxi {
+namespace OxiBle {
     void init();
 
     void start_scan();
     void stop_scan();
     void connect(const char *addr = nullptr);
     void disconnect();
-    void start_feed();
-    void stop_feed();
 
     oxi_state_t get_state();
-    const oxi_reading_t& get_reading();
-    bool is_feeding();
-    bool state_changed();  // returns true once after any state transition
+    bool state_changed();
 
     void task(void *param);
 
