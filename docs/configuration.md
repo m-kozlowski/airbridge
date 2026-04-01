@@ -25,6 +25,8 @@ Settings are stored in NVS (non-volatile storage) and persist across reboots.
 
 In AP mode, the device creates a network named `<hostname>_<MAC>` with password "airbridge" and serves the web UI at `192.168.4.1`.
 
+When station mode fails to connect, the device tries SmartConfig for 60 seconds, then falls back to AP+STA mode (AP for reachability, STA retrying in the background).
+
 ### Web UI
 
 | Key | Default | Description |
@@ -45,6 +47,17 @@ export AIRBRIDGE_OTA_PASS=airbridge
 pio run -e ota -t upload
 ```
 
+### Time & Timezone
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ntp_server` | *(empty)* | NTP server address. Empty = use DHCP-provided server, or pool.ntp.org as fallback |
+| `tz` | UTC0 | POSIX timezone string (e.g. `CET-1CEST,M3.5.0,M10.5.0/3`) |
+
+The web UI Device tab has a timezone helper that detects your browser's timezone and generates the POSIX string.
+
+When NTP syncs, the ResMed device clock is set automatically. If NTP is unavailable, the ResMed clock is used as fallback for the ESP system time.
+
 ### Oximetry
 
 | Key | Default | Description |
@@ -56,8 +69,11 @@ pio run -e ota -t upload
 | `oxi_device_addr` | *(empty)* | Preferred oximeter MAC (AA:BB:CC:DD:EE:FF) |
 | `oxi_interval_ms` | 500 | Injection interval in milliseconds |
 | `oxi_lframe_continuous` | true | Send L-frames even when no valid reading (keeps link alive) |
+| `udp_oxi_port` | 8025 | UDP oximetry listener port, 0 = disabled |
 
-You don't usually need to set these manually. Use the **Bluetooth** tab in the web UI to scan and connect.
+BLE oximeters are managed from the **Bluetooth** tab. For UDP oximetry, see [udp_oximetry.md](udp_oximetry.md).
+
+Only one source feeds at a time. First to deliver data wins, 10 seconds of silence releases.
 
 ### UART
 
@@ -81,6 +97,8 @@ All commands are prefixed with `$`. Anything without `$` is sent to the AirSense
 | Command | Description |
 |---------|-------------|
 | `$STATUS` | System state, oximetry, UART stats, heap |
+| `$TIME` | Show UTC, local time, timezone, NTP sync state |
+| `$TIMESYNC` | Re-trigger ResMed clock sync from NTP |
 | `$OXI SCAN` | Scan for BLE oximeters |
 | `$OXI RESULTS` | Show scan results |
 | `$OXI CONNECT [addr]` | Connect to oximeter |
@@ -97,8 +115,8 @@ All commands are prefixed with `$`. Anything without `$` is sent to the AirSense
 | `$FLASH CANCEL` | Abort flash |
 | `$LOG` | Show log levels |
 | `$LOG category level` | Set log level (ERROR/WARN/INFO/DEBUG) |
-| `$TRANSPARENT` | Raw UART passthrough (5s idle timeout) |
+| `$TRANSPARENT` | Raw UART passthrough (60s idle timeout) |
 | `$VERSION` | Firmware version |
 | `$REBOOT` | Restart device |
 
-Log categories: `BLE`, `TCP`, `OTA`, `WEB`, `ARB`, `HEALTH`, `ALL`
+Log categories: `OXI`, `TCP`, `OTA`, `WEB`, `ARB`, `HEALTH`, `ALL`
