@@ -20,7 +20,6 @@ typedef enum {
     CAT_ARB,
     CAT_HEALTH,
     CAT_INIT,
-    CAT_DBG,
     CAT_COUNT
 } log_cat_t;
 

@@ -132,7 +132,7 @@ void TcpBridge::init_debug_server(uint16_t port) {
     debug_server->setNoDelay(true);
     Log::add_output(&debug_print);
     debug_registered = true;
-    Log::logf(CAT_DBG, LOG_INFO, "[DBG] Debug server on port %d\n", port);
+    Log::logf(CAT_TCP, LOG_INFO, "[DBG] Debug server on port %d\n", port);
 }
 
 void TcpBridge::poll_debug_clients() {
@@ -150,7 +150,7 @@ void TcpBridge::poll_debug_clients() {
         if (slot >= 0) {
             debug_clients[slot] = nc;
             debug_clients[slot].setNoDelay(true);
-            Log::logf(CAT_DBG, LOG_DEBUG, "[DBG] Debug client %d connected from %s\n",
+            Log::logf(CAT_TCP, LOG_DEBUG, "[DBG] Debug client %d connected from %s\n",
                         slot, nc.remoteIP().toString().c_str());
         } else {
             nc.println("ERR: max debug clients");
