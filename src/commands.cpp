@@ -6,6 +6,8 @@
 #include "debug_log.h"
 #include "app_config.h"
 #include <esp_partition.h>
+#include <time.h>
+#include "wifi.h"
 
 static const char *state_names[] = {
     "IDLE", "THERAPY", "BOOTLOADER", "OTA_ESP",
@@ -131,6 +133,29 @@ void dispatch_command(const char *line, String &response) {
                 }
             }
         }
+        return;
+    }
+
+    if (upper == "TIME") {
+        time_t now = time(nullptr);
+        struct tm utc, local;
+        gmtime_r(&now, &utc);
+        localtime_r(&now, &local);
+        char ubuf[20], lbuf[20];
+        strftime(ubuf, sizeof(ubuf), "%Y-%m-%d %H:%M:%S", &utc);
+        strftime(lbuf, sizeof(lbuf), "%Y-%m-%d %H:%M:%S", &local);
+        response = "utc:   " + String(ubuf) + "\n";
+        response += "local: " + String(lbuf) + "\n";
+        response += "tz:    " + Config::get().tz + "\n";
+        response += "ntp:   " + String(WiFiSetup::time_synced() ? "synced" : "not synced") + "\n";
+        response += "epoch: " + String((uint32_t)now) + "\n";
+        return;
+    }
+
+    if (upper == "TIMESYNC") {
+        extern void reset_resmed_time_sync();
+        reset_resmed_time_sync();
+        response = "OK: resmed clock sync will retry\n";
         return;
     }
 

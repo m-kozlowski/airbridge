@@ -164,6 +164,8 @@ void setup() {
 
 static bool resmed_time_set = false;
 
+void reset_resmed_time_sync() { resmed_time_set = false; }
+
 static void sync_resmed_clock() {
     if (resmed_time_set || !WiFiSetup::time_synced()) return;
 
