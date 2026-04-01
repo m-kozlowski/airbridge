@@ -72,7 +72,6 @@ static void handle_transparent() {
     Arbiter::enter_transparent(&client);
 
     static const uint32_t TRANSPARENT_IDLE_TIMEOUT = 5000;
-    uint32_t last_activity = millis();
 
     while (client.connected() && Arbiter::get_state() == SYS_TRANSPARENT) {
         // TCP -> UART
@@ -81,13 +80,13 @@ static void handle_transparent() {
             int n = client.readBytes(buf, min(client.available(), (int)sizeof(buf)));
             if (n > 0) {
                 Arbiter::write_raw(buf, n);
-                last_activity = millis();
             }
         }
 
-        // UART -> TCP handled by rx_task via transparent_bridge
-
-        if (millis() - last_activity > TRANSPARENT_IDLE_TIMEOUT) {
+        // Idle timeout: 5s since last activity in either direction
+        // TCP->UART tracked here, UART->TCP tracked by rx_task via transparent_last_activity
+        uint32_t last = Arbiter::transparent_activity();
+        if (millis() - last > TRANSPARENT_IDLE_TIMEOUT) {
             break;
         }
 

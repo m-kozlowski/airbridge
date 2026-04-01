@@ -24,6 +24,7 @@ static volatile bool rx_frame_available = false;
 
 static volatile bool transparent_active = false;
 static Stream *transparent_bridge = nullptr;
+static volatile uint32_t transparent_last_activity = 0;
 static qframe_parser_t transparent_parser;      // shadow parser for BDD sniffing
 
 static uint32_t current_baud = 0;
@@ -100,6 +101,8 @@ static void rx_task(void *param) {
             int avail = uart->available();
             if (avail > 0) {
                 int n = uart->readBytes(buf, min(avail, (int)sizeof(buf)));
+                transparent_last_activity = millis();
+                Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] TRANSP RX %d bytes t=%lu\n", n, millis());
                 if (transparent_bridge && n > 0) {
                     transparent_bridge->write(buf, n);
                 }
@@ -107,22 +110,36 @@ static void rx_task(void *param) {
                 for (int i = 0; i < n; i++) {
                     if (qframe_parser_feed(&transparent_parser, buf[i])) {
                         const qframe_t *f = qframe_parser_frame(&transparent_parser);
+                        if (f && f->crc_valid) {
+                            char pl[48] = {};
+                            int plen = f->payload_len < sizeof(pl)-1 ? f->payload_len : sizeof(pl)-1;
+                            memcpy(pl, f->payload, plen);
+                            Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] Shadow type=%c len=%u: %s\n",
+                                      (char)f->type, f->payload_len, pl);
+                        } else {
+                            Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] Shadow type=%c len=%u crc=BAD\n",
+                                      f ? (char)f->type : '?', f ? f->payload_len : 0);
+                        }
                         if (f && f->crc_valid && f->type == QFRAME_TYPE_R &&
-                            f->payload_len >= 12 &&
-                            memcmp(f->payload, "P S #BDD = ", 11) == 0) {
-                            // Parse the BDD key from "P S #BDD = XXXX"
-                            char key_str[5] = {0};
-                            memcpy(key_str, f->payload + 11, min((int)(f->payload_len - 11), 4));
-                            uint16_t key = (uint16_t)strtoul(key_str, nullptr, 16);
-                            uint32_t new_baud = Arbiter::bdd_key_to_baud(key);
-                            if (new_baud && new_baud != current_baud) {
-                                // Flush bridge output first (R-frame already forwarded)
-                                if (transparent_bridge) transparent_bridge->flush();
-                                vTaskDelay(pdMS_TO_TICKS(10));
-                                uart->updateBaudRate(new_baud);
-                                Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD transparent: baud %u -> %u\n",
-                                            current_baud, new_baud);
-                                current_baud = new_baud;
+                            f->payload_len >= 10 &&
+                            memcmp(f->payload, "P S #BDD", 8) == 0) {
+                            const char *eq = (const char *)memmem(f->payload, f->payload_len, "= ", 2);
+                            if (eq) {
+                                const char *val = eq + 2;
+                                int remaining = f->payload_len - (val - (const char*)f->payload);
+                                char key_str[5] = {0};
+                                if (remaining > 0)
+                                    memcpy(key_str, val, min(remaining, 4));
+                                uint16_t key = (uint16_t)strtoul(key_str, nullptr, 16);
+                                uint32_t new_baud = Arbiter::bdd_key_to_baud(key);
+                                if (new_baud && new_baud != current_baud) {
+                                    if (transparent_bridge) transparent_bridge->flush();
+                                    vTaskDelay(pdMS_TO_TICKS(10));
+                                    uart->updateBaudRate(new_baud);
+                                    Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD transparent: baud %u -> %u\n",
+                                              current_baud, new_baud);
+                                    current_baud = new_baud;
+                                }
                             }
                         }
                         qframe_parser_reset(&transparent_parser);
@@ -281,18 +298,22 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
 
     // BDD baud switching (arbiter mode)
     if (ticket.success && strncmp(cmd, "P S #BDD ", 9) == 0 &&
-        ticket.resp_len >= 12 &&
-        memcmp(ticket.resp_payload, "P S #BDD = ", 11) == 0) {
-        char key_str[5] = {0};
-        memcpy(key_str, ticket.resp_payload + 11,
-               min((int)(ticket.resp_len - 11), 4));
-        uint16_t key = (uint16_t)strtoul(key_str, nullptr, 16);
-        uint32_t new_baud = bdd_key_to_baud(key);
-        if (new_baud && new_baud != current_baud) {
-            uart->updateBaudRate(new_baud);
-            Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD arbiter: baud %u -> %u\n",
-                        current_baud, new_baud);
-            current_baud = new_baud;
+        ticket.resp_len >= 10 &&
+        memcmp(ticket.resp_payload, "P S #BDD", 8) == 0) {
+        const char *eq = (const char *)memmem(ticket.resp_payload, ticket.resp_len, "= ", 2);
+        if (eq) {
+            const char *val = eq + 2;
+            int remaining = ticket.resp_len - (val - (const char*)ticket.resp_payload);
+            char key_str[5] = {0};
+            if (remaining > 0) memcpy(key_str, val, min(remaining, 4));
+            uint16_t key = (uint16_t)strtoul(key_str, nullptr, 16);
+            uint32_t new_baud = bdd_key_to_baud(key);
+            if (new_baud && new_baud != current_baud) {
+                uart->updateBaudRate(new_baud);
+                Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD arbiter: baud %u -> %u\n",
+                          current_baud, new_baud);
+                current_baud = new_baud;
+            }
         }
     }
 
@@ -343,8 +364,13 @@ void Arbiter::set_state(system_state_t s)   { sys_state = s; }
 void Arbiter::enter_transparent(Stream *bridge) {
     transparent_bridge = bridge;
     qframe_parser_reset(&transparent_parser);
+    transparent_last_activity = millis();
     transparent_active = true;
     sys_state = SYS_TRANSPARENT;
+}
+
+uint32_t Arbiter::transparent_activity() {
+    return transparent_last_activity;
 }
 
 void Arbiter::exit_transparent() {
@@ -359,6 +385,7 @@ void Arbiter::write_raw(const uint8_t *data, size_t len) {
     if (uart && (transparent_active || sys_state == SYS_OTA_AIRSENSE)) {
         uart->write(data, len);
         uart->flush();
+        if (transparent_active) transparent_last_activity = millis();
     }
 }
 

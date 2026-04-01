@@ -81,4 +81,6 @@ namespace Arbiter {
 
     void lcd_message(const char *msg, uint32_t timeout_ms = 0);  // 0 = persistent
     void lcd_clear();
+
+    uint32_t transparent_activity();
 }
