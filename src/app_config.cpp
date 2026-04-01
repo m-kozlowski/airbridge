@@ -39,6 +39,7 @@ static void apply_defaults() {
 
     cfg.ntp_server = "";
     cfg.tz = "UTC0";
+    cfg.udp_oxi_port = 8025;
 
     cfg.mitm_mode = 0;
 }
@@ -78,6 +79,7 @@ void Config::load() {
     cfg.ota_password    = prefs.getString("ota_pass", cfg.ota_password);
     cfg.ntp_server      = prefs.getString("ntp_server", cfg.ntp_server);
     cfg.tz              = prefs.getString("tz", cfg.tz);
+    cfg.udp_oxi_port    = prefs.getUShort("udp_oxi_port", cfg.udp_oxi_port);
     cfg.mitm_mode       = prefs.getUChar("mitm_mode", cfg.mitm_mode);
 }
 
@@ -111,6 +113,7 @@ void Config::save() {
     prefs.putString("ota_pass", cfg.ota_password);
     prefs.putString("ntp_server", cfg.ntp_server);
     prefs.putString("tz", cfg.tz);
+    prefs.putUShort("udp_oxi_port", cfg.udp_oxi_port);
     prefs.putUChar("mitm_mode", cfg.mitm_mode);
 }
 
@@ -198,6 +201,7 @@ static const KVEntry kv_table[] = {
     KV_STR("ota_password", ota_password),
     KV_STR("ntp_server", ntp_server),
     KV_STR("tz", tz),
+    KV_U16("udp_oxi_port", udp_oxi_port),
     KV_U8("mitm_mode", mitm_mode),
     { nullptr, KVEntry::U8, nullptr }
 };

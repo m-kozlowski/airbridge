@@ -47,14 +47,6 @@ static ScanResult scan_results[MAX_SCAN_RESULTS];
 static int scan_result_count = 0;
 
 
-static float parse_sfloat(uint16_t raw) {
-    int16_t mantissa = raw & 0x0FFF;
-    if (mantissa & 0x0800) mantissa |= 0xF000;
-    int8_t exponent = (int8_t)((raw >> 12) & 0x0F);
-    if (exponent & 0x08) exponent |= 0xF0;
-    return (float)mantissa * powf(10.0f, (float)exponent);
-}
-
 static void plx_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
     if (len < 5) return;
     uint16_t spo2_raw = data[1] | (data[2] << 8);

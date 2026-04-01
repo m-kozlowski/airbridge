@@ -8,6 +8,8 @@ typedef enum {
     OXI_SRC_UDP,
 } oxi_source_t;
 
+float parse_sfloat(uint16_t raw);
+
 namespace OxiArbiter {
     void init();
 

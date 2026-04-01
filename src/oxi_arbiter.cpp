@@ -3,6 +3,16 @@
 #include "qframe.h"
 #include "app_config.h"
 #include "debug_log.h"
+#include <math.h>
+
+float parse_sfloat(uint16_t raw) {
+    if (raw == 0x07FF || raw == 0x0800 || raw == 0x07FE) return -1;
+    int16_t mantissa = raw & 0x0FFF;
+    if (mantissa & 0x0800) mantissa |= 0xF000;
+    int8_t exponent = (int8_t)((raw >> 12) & 0x0F);
+    if (exponent & 0x08) exponent |= 0xF0;
+    return (float)mantissa * powf(10.0f, (float)exponent);
+}
 
 static oxi_reading_t reading = { -1, -1, false, 0 };
 static volatile bool feeding = false;

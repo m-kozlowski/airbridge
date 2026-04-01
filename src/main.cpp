@@ -5,6 +5,7 @@
 #include "tcp_bridge.h"
 #include "wifi.h"
 #include "oxi_ble.h"
+#include "oxi_udp.h"
 #include "oxi_arbiter.h"
 #include "airbridge_ota.h"
 #include "web_ui.h"
@@ -159,6 +160,7 @@ void setup() {
 
     OxiArbiter::init();
     OxiBle::init();
+    OxiUdp::init();
     Log::logf(CAT_INIT, LOG_INFO, "[INIT] BLE oximetry started\n");
 
     Log::logf(CAT_INIT, LOG_INFO, "[INIT] All systems go\n");

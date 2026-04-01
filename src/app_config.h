@@ -34,6 +34,8 @@ struct AirBridgeConfig {
     String      ntp_server;         // empty = DHCP or pool.ntp.org
     String      tz;                 // POSIX TZ string, e.g. CET-1CEST,M3.5.0,M10.5.0/3
 
+    uint16_t    udp_oxi_port;       // UDP oximetry port, 0=disabled
+
     uint8_t     mitm_mode;          // 0=off, 1=forward, 2=log, 3=filter
 
     // Runtime cache
