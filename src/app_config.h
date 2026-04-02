@@ -58,4 +58,7 @@ namespace Config {
     void invalidate_device_info();
 
     String dump();
+
+    typedef void (*kv_visitor_fn)(const char *key, const String &val, void *ctx);
+    void foreach_kv(kv_visitor_fn fn, void *ctx);
 }

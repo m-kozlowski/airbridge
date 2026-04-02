@@ -24,6 +24,15 @@ typedef struct {
     uint32_t    timestamp_ms;
 } oxi_reading_t;
 
+#define MAX_SCAN_RESULTS 8
+
+struct oxi_scan_result_t {
+    String addr;
+    String name;
+    int rssi;
+    uint8_t addr_type;
+};
+
 namespace OxiBle {
     void init();
 
@@ -37,5 +46,5 @@ namespace OxiBle {
 
     void task(void *param);
 
-    String get_scan_results();
+    const oxi_scan_result_t *get_scan_results(int &count);
 }

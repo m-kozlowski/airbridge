@@ -232,15 +232,21 @@ bool Config::set_value(const char *key, const char *value) {
     return false;
 }
 
-String Config::dump() {
-    String out;
+void Config::foreach_kv(kv_visitor_fn fn, void *ctx) {
     for (const KVEntry *e = kv_table; e->key; e++) {
         String val;
         get_value(e->key, val);
-        if ((strcmp(e->key, "wifi_pass") == 0 || strcmp(e->key, "http_pass") == 0) && val.length() > 0) {
-            val = "****";
-        }
-        out += String(e->key) + "=" + val + "\n";
+        fn(e->key, val, ctx);
     }
+}
+
+String Config::dump() {
+    String out;
+    foreach_kv([](const char *key, const String &val, void *p) {
+        String v = val;
+        if ((strcmp(key, "wifi_pass") == 0 || strcmp(key, "http_pass") == 0) && v.length() > 0)
+            v = "****";
+        *(String*)p += String(key) + "=" + v + "\n";
+    }, &out);
     return out;
 }

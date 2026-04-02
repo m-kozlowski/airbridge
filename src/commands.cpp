@@ -25,6 +25,7 @@ void dispatch_command(const char *line, String &response) {
         Config::refresh_device_info();
         auto &cfg = Config::get();
 
+        response.reserve(512);
         response = "system: " + String(system_state_name(sys)) + "\n";
         if (!cfg.device_pna.isEmpty())
             response += "device: " + cfg.device_pna + " (" + cfg.device_srn + ")\n";
@@ -70,7 +71,15 @@ void dispatch_command(const char *line, String &response) {
             OxiBle::start_scan();
             response = "OK: BLE scan started\n";
         } else if (sub == "RESULTS") {
-            response = OxiBle::get_scan_results();
+            int count = 0;
+            const oxi_scan_result_t *devs = OxiBle::get_scan_results(count);
+            if (count == 0) {
+                response = "(no oximeters found)\n";
+            } else {
+                for (int i = 0; i < count; i++)
+                    response += devs[i].addr + " " + devs[i].name +
+                                " RSSI=" + String(devs[i].rssi) + "\n";
+            }
         } else if (sub.startsWith("CONNECT")) {
             String addr = cmd.substring(12);  // "OXI CONNECT <addr>"
             addr.trim();

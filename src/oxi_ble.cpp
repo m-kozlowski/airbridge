@@ -11,7 +11,6 @@
 #define OXI_TASK_PRIO       4
 #define SCAN_DURATION_MS    10000
 #define RECONNECT_DELAY_MS  3000
-#define MAX_SCAN_RESULTS    8
 
 static NimBLEUUID PLX_SERVICE_UUID((uint16_t)0x1822);
 static NimBLEUUID PLX_CONTINUOUS_UUID((uint16_t)0x2A5F);
@@ -41,13 +40,7 @@ static String target_addr = "";
 
 static NimBLEClient *pClient = nullptr;
 
-struct ScanResult {
-    String addr;
-    String name;
-    int rssi;
-    uint8_t addr_type;
-};
-static ScanResult scan_results[MAX_SCAN_RESULTS];
+static oxi_scan_result_t scan_results[MAX_SCAN_RESULTS];
 static int scan_result_count = 0;
 
 
@@ -494,12 +487,7 @@ void OxiBle::disconnect()  { disconnect_requested = true; }
 oxi_state_t OxiBle::get_state()            { return state; }
 bool OxiBle::state_changed()               { bool d = state_dirty; state_dirty = false; return d; }
 
-String OxiBle::get_scan_results() {
-    String out;
-    for (int i = 0; i < scan_result_count; i++) {
-        out += scan_results[i].addr + " " + scan_results[i].name +
-               " RSSI=" + String(scan_results[i].rssi) + "\n";
-    }
-    if (scan_result_count == 0) out = "(no oximeters found)\n";
-    return out;
+const oxi_scan_result_t *OxiBle::get_scan_results(int &count) {
+    count = scan_result_count;
+    return scan_results;
 }

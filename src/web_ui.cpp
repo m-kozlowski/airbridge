@@ -333,29 +333,17 @@ static void handleGetConfig(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
 
     String json = "{";
-    bool first = true;
-
-    auto &cfg = Config::get();
-    String dump = Config::dump();
-    int start = 0;
-    for (int i = 0; i <= (int)dump.length(); i++) {
-        if (i == (int)dump.length() || dump[i] == '\n') {
-            String line = dump.substring(start, i);
-            int eq = line.indexOf('=');
-            if (eq > 0) {
-                String key = line.substring(0, eq);
-                String val = line.substring(eq + 1);
-                if (!first) json += ',';
-                first = false;
-                json += '"';
-                json += key;
-                json += "\":\"";
-                json += val;
-                json += '"';
-            }
-            start = i + 1;
-        }
-    }
+    struct { String *json; bool first; } ctx = {&json, true};
+    Config::foreach_kv([](const char *key, const String &val, void *p) {
+        auto *c = (decltype(ctx)*)p;
+        if (!c->first) *c->json += ',';
+        c->first = false;
+        *c->json += '"';
+        *c->json += key;
+        *c->json += "\":\"";
+        *c->json += val;
+        *c->json += '"';
+    }, &ctx);
     json += '}';
     request->send(200, "application/json", json);
 }
@@ -620,39 +608,16 @@ static void handleBleStatus(AsyncWebServerRequest *request) {
     jsonAddString(json, "auto_start", cfg.oxi_auto_start ? "yes" : "no");
 
 
-    String results = OxiBle::get_scan_results();
+    int scan_count = 0;
+    const oxi_scan_result_t *devs = OxiBle::get_scan_results(scan_count);
     json += ",\"devices\":[";
-    if (results.indexOf("(no oximeters") < 0) {
-        bool first = true;
-        int start = 0;
-        for (int i = 0; i <= (int)results.length(); i++) {
-            if (i == (int)results.length() || results[i] == '\n') {
-                String line = results.substring(start, i);
-                line.trim();
-                if (line.length() > 0) {
-                    // Format: "AA:BB:CC:DD:EE:FF DeviceName RSSI=-XX"
-                    int sp1 = line.indexOf(' ');
-                    if (sp1 > 0) {
-                        String addr = line.substring(0, sp1);
-                        String rest = line.substring(sp1 + 1);
-                        int rssiIdx = rest.indexOf("RSSI=");
-                        String name = (rssiIdx > 0) ? rest.substring(0, rssiIdx) : rest;
-                        String rssi = (rssiIdx >= 0) ? rest.substring(rssiIdx + 5) : "?";
-                        name.trim();
-                        rssi.trim();
-
-                        if (!first) json += ',';
-                        first = false;
-                        json += "{";
-                        jsonAddString(json, "addr", addr.c_str(), false);
-                        jsonAddString(json, "name", name.c_str());
-                        jsonAddString(json, "rssi", rssi.c_str());
-                        json += "}";
-                    }
-                }
-                start = i + 1;
-            }
-        }
+    for (int i = 0; i < scan_count; i++) {
+        if (i > 0) json += ',';
+        json += "{";
+        jsonAddString(json, "addr", devs[i].addr.c_str(), false);
+        jsonAddString(json, "name", devs[i].name.c_str());
+        jsonAddInt(json, "rssi", devs[i].rssi);
+        json += "}";
     }
     json += "],\"bonds\":[";
     int numBonds = NimBLEDevice::getNumBonds();
