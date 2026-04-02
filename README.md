@@ -2,6 +2,8 @@
 
 ESP32 bridge for ResMed AirSense 10 CPAP.
 
+![AirBridge feeding oximetry](docs/screenshots/airbridge-demo.jpg)
+
 ## What it does
 
 - **Oximetry** - feeds SpO2/pulse into AirSense for native SAD.edf recording. BLE (Nonin 3150, O2Ring, generic PLX/HR sensors) and UDP for integrating unsupported devices.
