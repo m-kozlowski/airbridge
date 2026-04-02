@@ -225,7 +225,11 @@ static void arbiter_task(void *param) {
         current_ticket = nullptr;
         rx_frame_available = false;
 
-        if (t->done) {
+        if (t->cancelled) {
+            // caller timed out, ticket is stale.
+            Log::logf(CAT_ARB, LOG_WARN, "[ARB] Ticket %u cancelled by caller\n",
+                      t->ticket_id);
+        } else if (t->done) {
             xSemaphoreGive(t->done);
         } else {
             free(t);  // no_ack heap ticket, arbiter is sole owner
@@ -287,8 +291,15 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
         return false;
     }
 
-    xSemaphoreTake(ticket.done, pdMS_TO_TICKS(timeout_ms + 100));
-    vSemaphoreDelete(ticket.done);
+    BaseType_t got = xSemaphoreTake(ticket.done, pdMS_TO_TICKS(timeout_ms + 100));
+    if (got == pdTRUE) {
+        vSemaphoreDelete(ticket.done);
+    } else {
+        // Arbiter may still hold a pointer to this ticket - mark cancelled
+        ticket.cancelled = true;
+        vSemaphoreDelete(ticket.done);
+        ticket.done = nullptr;
+    }
 
     // BDD baud switching (arbiter mode)
     if (ticket.success && strncmp(cmd, "P S #BDD ", 9) == 0) {

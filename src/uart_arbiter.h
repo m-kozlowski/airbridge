@@ -50,6 +50,7 @@ typedef struct {
     bool            success;
     bool            timed_out;
 
+    volatile bool   cancelled;
     SemaphoreHandle_t done;
 } uart_ticket_t;
 
