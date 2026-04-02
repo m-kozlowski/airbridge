@@ -109,6 +109,9 @@ void OxiArbiter::feed(oxi_source_t src, int8_t spo2, int16_t pulse_bpm, bool val
     if (src_active == OXI_SRC_NONE && valid) {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Source active: %s\n", src_name(src));
         Arbiter::lcd_message("Oximeter Connected", 15000);
+        if (Config::get().oxi_auto_start && !feeding) {
+            start_feed();
+        }
     }
     if (!valid && src_active == OXI_SRC_NONE) return;
 

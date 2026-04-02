@@ -437,9 +437,6 @@ void OxiBle::task(void *param) {
                         set_nonin_datetime(pClient);
                         set_state(OXI_STREAMING);
                         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Streaming started\n");
-                        if (cfg.oxi_auto_start) {
-                            OxiArbiter::start_feed();
-                        }
                     } else {
                         Log::logf(CAT_OXI, LOG_WARN, "[OXI] No suitable services, disconnecting\n");
                         pClient->disconnect();
