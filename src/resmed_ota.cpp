@@ -233,6 +233,19 @@ static bool check_bid(const esp_partition_t *part, size_t blx_partition_offset, 
 }
 
 
+static bool negotiate_baud_460800() {
+    uint8_t bdd_frame[64];
+    int bdd_len = qframe_build_cmd("P S #BDD 0002", bdd_frame, sizeof(bdd_frame));
+    if (bdd_len <= 0) return false;
+    Arbiter::write_raw(bdd_frame, bdd_len);
+    vTaskDelay(pdMS_TO_TICKS(100));
+    qframe_t rx;
+    Arbiter::wait_frame(&rx, 500);
+    Arbiter::set_baud(460800);
+    Log::logf(CAT_OTA, LOG_INFO, "[OTA] Baud set to %u\n", Arbiter::get_baud());
+    return true;
+}
+
 static bool enter_bootloader(bool send_bll = true) {
     char resp[48] = {};
     strncpy(flash_phase, "Enter bootloader", sizeof(flash_phase));
@@ -508,18 +521,7 @@ static void flash_task(void *param) {
     {
         strncpy(flash_phase, "Baud negotiate", sizeof(flash_phase));
         Log::logf(CAT_OTA, LOG_INFO, "[OTA] Negotiating baud 460800...\n");
-        uint8_t bdd_frame[64];
-        int bdd_len = qframe_build_cmd("P S #BDD 0002", bdd_frame, sizeof(bdd_frame));
-        if (bdd_len > 0) {
-            Arbiter::write_raw(bdd_frame, bdd_len);
-            vTaskDelay(pdMS_TO_TICKS(100));
-            // Consume ACK at old baud
-            qframe_t rx;
-            Arbiter::wait_frame(&rx, 500);
-            // Switch
-            Arbiter::set_baud(460800);
-            Log::logf(CAT_OTA, LOG_INFO, "[OTA] Baud set to %u\n", Arbiter::get_baud());
-        }
+        negotiate_baud_460800();
     }
 
     if (is_full) {
@@ -549,16 +551,7 @@ static void flash_task(void *param) {
             // Re-negotiate baud for CMX
             {
                 Log::logf(CAT_OTA, LOG_INFO, "[OTA] Re-negotiating baud 460800...\n");
-                uint8_t bdd_frame[64];
-                int bdd_len = qframe_build_cmd("P S #BDD 0002", bdd_frame, sizeof(bdd_frame));
-                if (bdd_len > 0) {
-                    Arbiter::write_raw(bdd_frame, bdd_len);
-                    vTaskDelay(pdMS_TO_TICKS(100));
-                    qframe_t rx;
-                    Arbiter::wait_frame(&rx, 500);
-                    Arbiter::set_baud(460800);
-                    Log::logf(CAT_OTA, LOG_INFO, "[OTA] Baud re-negotiated to %u\n", Arbiter::get_baud());
-                }
+                negotiate_baud_460800();
             }
         }
 

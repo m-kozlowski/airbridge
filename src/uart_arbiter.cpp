@@ -89,6 +89,8 @@ static uart_ticket_t* pq_pop(TickType_t wait) {
     return t;
 }
 
+static uint32_t parse_bdd_baud(const uint8_t *payload, uint16_t len);
+
 
 static void rx_task(void *param) {
     uint8_t buf[64];
@@ -120,26 +122,15 @@ static void rx_task(void *param) {
                             Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] Shadow type=%c len=%u crc=BAD\n",
                                       f ? (char)f->type : '?', f ? f->payload_len : 0);
                         }
-                        if (f && f->crc_valid && f->type == QFRAME_TYPE_R &&
-                            f->payload_len >= 10 &&
-                            memcmp(f->payload, "P S #BDD", 8) == 0) {
-                            const char *eq = (const char *)memmem(f->payload, f->payload_len, "= ", 2);
-                            if (eq) {
-                                const char *val = eq + 2;
-                                int remaining = f->payload_len - (val - (const char*)f->payload);
-                                char key_str[5] = {0};
-                                if (remaining > 0)
-                                    memcpy(key_str, val, min(remaining, 4));
-                                uint16_t key = (uint16_t)strtoul(key_str, nullptr, 16);
-                                uint32_t new_baud = Arbiter::bdd_key_to_baud(key);
-                                if (new_baud && new_baud != current_baud) {
-                                    if (transparent_bridge) transparent_bridge->flush();
-                                    vTaskDelay(pdMS_TO_TICKS(10));
-                                    uart->updateBaudRate(new_baud);
-                                    Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD transparent: baud %u -> %u\n",
-                                              current_baud, new_baud);
-                                    current_baud = new_baud;
-                                }
+                        if (f && f->crc_valid && f->type == QFRAME_TYPE_R) {
+                            uint32_t new_baud = parse_bdd_baud(f->payload, f->payload_len);
+                            if (new_baud && new_baud != current_baud) {
+                                if (transparent_bridge) transparent_bridge->flush();
+                                vTaskDelay(pdMS_TO_TICKS(10));
+                                uart->updateBaudRate(new_baud);
+                                Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD transparent: baud %u -> %u\n",
+                                          current_baud, new_baud);
+                                current_baud = new_baud;
                             }
                         }
                         qframe_parser_reset(&transparent_parser);
@@ -300,23 +291,13 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
     vSemaphoreDelete(ticket.done);
 
     // BDD baud switching (arbiter mode)
-    if (ticket.success && strncmp(cmd, "P S #BDD ", 9) == 0 &&
-        ticket.resp_len >= 10 &&
-        memcmp(ticket.resp_payload, "P S #BDD", 8) == 0) {
-        const char *eq = (const char *)memmem(ticket.resp_payload, ticket.resp_len, "= ", 2);
-        if (eq) {
-            const char *val = eq + 2;
-            int remaining = ticket.resp_len - (val - (const char*)ticket.resp_payload);
-            char key_str[5] = {0};
-            if (remaining > 0) memcpy(key_str, val, min(remaining, 4));
-            uint16_t key = (uint16_t)strtoul(key_str, nullptr, 16);
-            uint32_t new_baud = bdd_key_to_baud(key);
-            if (new_baud && new_baud != current_baud) {
-                uart->updateBaudRate(new_baud);
-                Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD arbiter: baud %u -> %u\n",
-                          current_baud, new_baud);
-                current_baud = new_baud;
-            }
+    if (ticket.success && strncmp(cmd, "P S #BDD ", 9) == 0) {
+        uint32_t new_baud = parse_bdd_baud(ticket.resp_payload, ticket.resp_len);
+        if (new_baud && new_baud != current_baud) {
+            uart->updateBaudRate(new_baud);
+            Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD arbiter: baud %u -> %u\n",
+                      current_baud, new_baud);
+            current_baud = new_baud;
         }
     }
 
@@ -428,6 +409,14 @@ uint32_t Arbiter::bdd_key_to_baud(uint16_t key) {
         case 2: return 460800;
         default: return 0;
     }
+}
+
+// Parse BDD response payload, return new baud rate or 0 if not BDD.
+static uint32_t parse_bdd_baud(const uint8_t *payload, uint16_t len) {
+    if (len < 10 || memcmp(payload, "P S #BDD", 8) != 0) return 0;
+    const char *val = qframe_response_value((const char *)payload);
+    if (!val) return 0;
+    return Arbiter::bdd_key_to_baud((uint16_t)strtoul(val, nullptr, 16));
 }
 
 uint32_t Arbiter::get_tx_count()       { return stat_tx; }
