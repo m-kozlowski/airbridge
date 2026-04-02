@@ -3,17 +3,20 @@
 #include "qframe.h"
 #include "app_config.h"
 #include "debug_log.h"
-// 4-bit signed exponent -> pow(10, n), range -8..+7
-static const float pow10_table[16] = {
-    1e0f, 1e1f, 1e2f, 1e3f, 1e4f, 1e5f, 1e6f, 1e7f,
-    1e-8f, 1e-7f, 1e-6f, 1e-5f, 1e-4f, 1e-3f, 1e-2f, 1e-1f,
-};
 
-float parse_sfloat(uint16_t raw) {
+// integer pow10 for positive exponents 0-7
+static const int32_t pow10_int[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000};
+
+int16_t parse_sfloat(uint16_t raw) {
     if (raw == 0x07FF || raw == 0x0800 || raw == 0x07FE) return -1;
     int16_t mantissa = raw & 0x0FFF;
     if (mantissa & 0x0800) mantissa |= 0xF000;
-    return (float)mantissa * pow10_table[(raw >> 12) & 0x0F];
+    int8_t exp = (int8_t)((raw >> 12) & 0x0F);
+    if (exp & 0x08) exp |= 0xF0;
+    if (exp == 0) return mantissa;
+    if (exp > 0) return (int16_t)(mantissa * pow10_int[exp]);
+    // negative exponent: divide
+    return (int16_t)(mantissa / pow10_int[-exp]);
 }
 
 static oxi_reading_t reading = { -1, -1, false, 0 };

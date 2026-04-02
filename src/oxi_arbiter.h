@@ -8,7 +8,9 @@ typedef enum {
     OXI_SRC_UDP,
 } oxi_source_t;
 
-float parse_sfloat(uint16_t raw);
+// IEEE 11073 SFLOAT to integer - SpO2/HR are always int
+// Returns -1 for NaN/NRes/reserved
+int16_t parse_sfloat(uint16_t raw);
 
 namespace OxiArbiter {
     void init();

@@ -30,33 +30,53 @@ static void udp_task(void *param) {
     }
     Log::logf(CAT_OXI, LOG_INFO, "[OXI] UDP listening on port %u\n", port);
 
+    uint32_t pkt_count = 0;
     while (true) {
         int len = udp.parsePacket();
-        if (len == UDP_PACKET_SIZE) {
-            uint8_t buf[UDP_PACKET_SIZE];
-            udp.read(buf, UDP_PACKET_SIZE);
-
-            // validate magic
-            if (buf[0] != UDP_MAGIC_0 || buf[1] != UDP_MAGIC_1) goto next;
-
-            // validate flags
-            if (buf[2] & 0xE0) goto next;
-
-            {
-                uint16_t spo2_raw = buf[3] | (buf[4] << 8);
-                uint16_t hr_raw = buf[5] | (buf[6] << 8);
-                float spo2 = parse_sfloat(spo2_raw);
-                float hr = parse_sfloat(hr_raw);
-
-                if (spo2 >= 0 && spo2 <= 100 && hr >= 0 && hr <= 500) {
-                    OxiArbiter::feed(OXI_SRC_UDP, (int8_t)spo2, (int16_t)hr, true);
-                } else if (spo2 < 0 || hr < 0) {
-                    OxiArbiter::feed(OXI_SRC_UDP, -1, -1, false);
-                }
-            }
+        if (len <= 0) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
         }
-next:
-        if (len <= 0) vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(1);  // yield after each packet
+
+        if (len != UDP_PACKET_SIZE) {
+            // drain the packet
+            uint8_t drain[32];
+            while (udp.available()) udp.read(drain, sizeof(drain));
+            Log::logf(CAT_OXI, LOG_WARN, "[OXI] UDP bad length %d (expected %d)\n",
+                      len, UDP_PACKET_SIZE);
+            continue;
+        }
+
+        uint8_t buf[UDP_PACKET_SIZE];
+        udp.read(buf, UDP_PACKET_SIZE);
+
+        if (buf[0] != UDP_MAGIC_0 || buf[1] != UDP_MAGIC_1) {
+            Log::logf(CAT_OXI, LOG_WARN, "[OXI] UDP bad magic %02X %02X\n",
+                      buf[0], buf[1]);
+            continue;
+        }
+
+        if (buf[2] & 0xE0) {
+            Log::logf(CAT_OXI, LOG_WARN, "[OXI] UDP bad flags %02X\n", buf[2]);
+            continue;
+        }
+
+        uint16_t spo2_raw = buf[3] | (buf[4] << 8);
+        uint16_t hr_raw = buf[5] | (buf[6] << 8);
+        int16_t spo2 = parse_sfloat(spo2_raw);
+        int16_t hr = parse_sfloat(hr_raw);
+
+        if (spo2 >= 0 && spo2 <= 100 && hr >= 0 && hr <= 500) {
+            pkt_count++;
+            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] UDP SpO2=%d HR=%d\n", spo2, hr);
+            OxiArbiter::feed(OXI_SRC_UDP, spo2, hr, true);
+        } else if (spo2 < 0 || hr < 0) {
+            Log::logf(CAT_OXI, LOG_WARN, "[OXI] UDP invalid (raw=%04X,%04X)\n", spo2_raw, hr_raw);
+            OxiArbiter::feed(OXI_SRC_UDP, -1, -1, false);
+        } else {
+            Log::logf(CAT_OXI, LOG_WARN, "[OXI] UDP out of range (spo2=%d hr=%d)\n", spo2, hr);
+        }
     }
 }
 

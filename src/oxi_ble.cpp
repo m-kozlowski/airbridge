@@ -48,10 +48,10 @@ static void plx_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t
     if (len < 5) return;
     uint16_t spo2_raw = data[1] | (data[2] << 8);
     uint16_t pr_raw = data[3] | (data[4] << 8);
-    float spo2 = parse_sfloat(spo2_raw);
-    float pr = parse_sfloat(pr_raw);
+    int16_t spo2 = parse_sfloat(spo2_raw);
+    int16_t pr = parse_sfloat(pr_raw);
     if (spo2 > 0 && spo2 <= 100 && pr > 0 && pr < 500) {
-        OxiArbiter::feed(OXI_SRC_BLE, (int8_t)roundf(spo2), (int16_t)roundf(pr), true);
+        OxiArbiter::feed(OXI_SRC_BLE, spo2, pr, true);
     } else {
         OxiArbiter::feed(OXI_SRC_BLE, -1, -1, false);
     }
