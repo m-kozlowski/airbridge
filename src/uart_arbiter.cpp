@@ -166,8 +166,6 @@ static void rx_task(void *param) {
                     memcpy((void*)&last_rx_frame, f, sizeof(qframe_t));
                     rx_frame_available = true;
                     stat_rx++;
-                    Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX frame type=%c len=%u t=%lu\n",
-                              f->type, f->payload_len, millis());
                     if (rx_ready) {
                         xSemaphoreGive(rx_ready);
                     }
@@ -218,6 +216,9 @@ static void arbiter_task(void *param) {
             }
             t->success = (last_rx_frame.type == QFRAME_TYPE_R);
             t->timed_out = false;
+            Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX type=%c len=%u %s t=%lu\n",
+                      (char)t->resp_type, t->resp_len,
+                      t->success ? "ok" : "err", millis());
             if (last_rx_frame.type == QFRAME_TYPE_E) {
                 stat_error++;
             }
@@ -226,6 +227,8 @@ static void arbiter_task(void *param) {
             t->timed_out = true;
             t->resp_len = 0;
             stat_timeout++;
+            Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX timeout after %dms src=%d t=%lu\n",
+                      t->timeout_ms, t->source, millis());
         }
 
         current_ticket = nullptr;
