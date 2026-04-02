@@ -928,18 +928,63 @@ function attachTzHelper(inp) {
 async function loadConfig() {
   const sp = document.getElementById('configSpinner');
   sp.style.display = 'block';
+  var CFG_SECTIONS = ['WiFi & Network', 'Time & Timezone', 'Oximetry', 'UART', 'Advanced'];
+  var CFG_META = {
+    hostname:       ['WiFi & Network', 'Device hostname (mDNS + AP name)'],
+    wifi_ssid:      ['WiFi & Network', 'WiFi network name (station mode)'],
+    wifi_pass:      ['WiFi & Network', 'WiFi password'],
+    wifi_mode:      ['WiFi & Network', '0=station, 1=AP, 2=off'],
+    tcp_port:       ['WiFi & Network', 'TCP command port'],
+    debug_port:     ['WiFi & Network', 'Debug log stream port (read-only)'],
+    http_port:      ['WiFi & Network', 'Web server port'],
+    http_user:      ['WiFi & Network', 'Web UI username'],
+    http_pass:      ['WiFi & Network', 'Web UI password'],
+    ota_password:   ['WiFi & Network', 'ArduinoOTA password'],
+    udp_oxi_port:   ['WiFi & Network', 'UDP oximetry port (0=disabled)'],
+    ntp_server:     ['Time & Timezone', 'NTP server (empty = DHCP or pool.ntp.org)'],
+    tz:             ['Time & Timezone', 'POSIX timezone string'],
+    oxi_enabled:    ['Oximetry', 'Enable BLE oximeter support'],
+    oxi_auto_start: ['Oximetry', 'Auto-start feeding on connect'],
+    oxi_feed_therapy_only: ['Oximetry', 'Only inject during active therapy'],
+    oxi_device_type:['Oximetry', '0=auto, 1=Nonin, 2=O2Ring, 3=PLX'],
+    oxi_device_addr:['Oximetry', 'Preferred oximeter MAC'],
+    oxi_interval_ms:['Oximetry', 'Injection interval (ms)'],
+    oxi_lframe_continuous: ['Oximetry', 'Send L-frames even without valid reading'],
+    uart_baud:      ['UART', 'AirSense UART baud rate'],
+    uart_cmd_timeout_ms: ['UART', 'Command response timeout (ms)'],
+    uart_max_retries: ['UART', 'Retry count for failed commands'],
+    allow_transparent_during_therapy: ['Advanced', 'Allow raw UART passthrough during therapy'],
+    mitm_mode:      ['Advanced', '0=off, 1=forward, 2=log, 3=filter'],
+  };
+
   try {
     const r = await api('/api/config');
     if (!r) return;
     const d = await r.json();
     const el = document.getElementById('configFields');
     el.innerHTML = '';
-    for (const [k, v] of Object.entries(d)) {
-      const row = document.createElement('div');
+    var lastGroup = '';
+    var entries = Object.entries(d).sort(function(a, b) {
+      var sa = CFG_META[a[0]] ? CFG_SECTIONS.indexOf(CFG_META[a[0]][0]) : 99;
+      var sb = CFG_META[b[0]] ? CFG_SECTIONS.indexOf(CFG_META[b[0]][0]) : 99;
+      return sa - sb;
+    });
+    for (const [k, v] of entries) {
+      var meta = CFG_META[k] || ['Other', ''];
+      if (meta[0] !== lastGroup) {
+        lastGroup = meta[0];
+        var hdr = document.createElement('h4');
+        hdr.textContent = lastGroup;
+        hdr.style.cssText = 'color:#e94560;margin:16px 0 8px;font-size:14px';
+        el.appendChild(hdr);
+      }
+      var row = document.createElement('div');
       row.className = 'row';
-      const isPass = k.includes('pass');
-      row.innerHTML = `<label>${k}</label>
-<input type="${isPass?'password':'text'}" data-key="${k}" value="${isPass?'':v}">`;
+      var isPass = k.includes('pass');
+      row.innerHTML = '<label>' + k +
+        (meta[1] ? '<br><small style="color:#666;font-weight:normal">' + meta[1] + '</small>' : '') +
+        '</label><input type="' + (isPass ? 'password' : 'text') +
+        '" data-key="' + k + '" value="' + (isPass ? '' : v) + '">';
       el.appendChild(row);
       if (k === 'tz') attachTzHelper(row.querySelector('input'));
     }
