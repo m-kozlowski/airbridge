@@ -99,7 +99,7 @@ void Log::remove_output(Print *out) {
 }
 
 static void log_dispatch(const char *fmt, va_list args) {
-    char buf[256];
+    char buf[128];
     int len = vsnprintf(buf, sizeof(buf), fmt, args);
     if (len <= 0) return;
     if (len >= (int)sizeof(buf)) len = sizeof(buf) - 1;

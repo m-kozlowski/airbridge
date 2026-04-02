@@ -4,7 +4,7 @@
 #include "debug_log.h"
 #include <WiFiUdp.h>
 
-#define UDP_TASK_STACK  2048
+#define UDP_TASK_STACK  3072
 #define UDP_TASK_PRIO   3
 
 // Protocol: [0x55] [0xAB] [flags] [spo2_lo] [spo2_hi] [hr_lo] [hr_hi]
