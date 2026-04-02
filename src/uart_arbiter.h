@@ -28,6 +28,13 @@ typedef enum {
     SYS_ERROR,
 } system_state_t;
 
+inline const char *system_state_name(system_state_t s) {
+    static const char *names[] = {
+        "IDLE","THERAPY","BOOTLOADER","OTA_ESP","OTA_AIRSENSE","TRANSPARENT","ERROR"
+    };
+    return (s < sizeof(names)/sizeof(names[0])) ? names[s] : "?";
+}
+
 typedef struct {
     cmd_source_t    source;
     cmd_priority_t  priority;

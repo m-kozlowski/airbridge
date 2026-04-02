@@ -10,6 +10,13 @@ typedef enum {
     OXI_DISCONNECTED,
 } oxi_state_t;
 
+inline const char *oxi_state_name(oxi_state_t s) {
+    static const char *names[] = {
+        "DISABLED","SCANNING","CONNECTING","BONDING","STREAMING","DISCONNECTED"
+    };
+    return (s < sizeof(names)/sizeof(names[0])) ? names[s] : "?";
+}
+
 typedef struct {
     int8_t      spo2;
     int16_t     pulse_bpm;

@@ -10,15 +10,6 @@
 #include <time.h>
 #include "wifi.h"
 
-static const char *state_names[] = {
-    "IDLE", "THERAPY", "BOOTLOADER", "OTA_ESP",
-    "OTA_AIRSENSE", "TRANSPARENT", "ERROR"
-};
-
-static const char *oxi_state_names[] = {
-    "DISABLED", "SCANNING", "CONNECTING", "BONDING",
-    "STREAMING", "DISCONNECTED"
-};
 
 void dispatch_command(const char *line, String &response) {
     String cmd = String(line);
@@ -34,10 +25,10 @@ void dispatch_command(const char *line, String &response) {
         Config::refresh_device_info();
         auto &cfg = Config::get();
 
-        response = "system: " + String(state_names[sys]) + "\n";
+        response = "system: " + String(system_state_name(sys)) + "\n";
         if (!cfg.device_pna.isEmpty())
             response += "device: " + cfg.device_pna + " (" + cfg.device_srn + ")\n";
-        response += "oxi: " + String(oxi_state_names[oxi]) + "\n";
+        response += "oxi: " + String(oxi_state_name(oxi)) + "\n";
         if (r.valid) {
             response += "spo2: " + String(r.spo2) + "%\n";
             response += "pulse: " + String(r.pulse_bpm) + " bpm\n";
@@ -67,7 +58,7 @@ void dispatch_command(const char *line, String &response) {
         } else if (sub == "STATUS") {
             oxi_state_t st = OxiBle::get_state();
             const oxi_reading_t &r = OxiArbiter::get_reading();
-            response = "state: " + String(oxi_state_names[st]) + "\n";
+            response = "state: " + String(oxi_state_name(st)) + "\n";
             response += "feeding: " + String(OxiArbiter::is_feeding() ? "yes" : "no") + "\n";
             if (r.valid) {
                 response += "spo2: " + String(r.spo2) + "\n";

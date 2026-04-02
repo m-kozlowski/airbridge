@@ -120,15 +120,6 @@ static void handleRoot(AsyncWebServerRequest *request) {
 static void handleStatus(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
 
-    static const char *state_names[] = {
-        "IDLE", "THERAPY", "BOOTLOADER", "OTA_ESP",
-        "OTA_AIRSENSE", "TRANSPARENT", "ERROR"
-    };
-    static const char *oxi_names[] = {
-        "DISABLED", "SCANNING", "CONNECTING", "BONDING",
-        "STREAMING", "DISCONNECTED"
-    };
-
     system_state_t sys = Arbiter::get_state();
     oxi_state_t oxi = OxiBle::get_state();
     const oxi_reading_t &r = OxiArbiter::get_reading();
@@ -172,13 +163,13 @@ static void handleStatus(AsyncWebServerRequest *request) {
     String json = "{";
     jsonAddString(json, "version", airbridge_version(), false);
     jsonAddString(json, "built", airbridge_build_date());
-    jsonAddString(json, "system", state_names[sys]);
+    jsonAddString(json, "system", system_state_name(sys));
     jsonAddInt(json, "rop", rop);
     jsonAddString(json, "pna", cfg.device_pna.c_str());
     jsonAddString(json, "srn", cfg.device_srn.c_str());
     jsonAddString(json, "esp_time", esp_time);
     jsonAddString(json, "resmed_time", resmed_time);
-    jsonAddString(json, "oxi", oxi_names[oxi]);
+    jsonAddString(json, "oxi", oxi_state_name(oxi));
     jsonAddString(json, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
@@ -633,17 +624,12 @@ static void handleLiveControl(AsyncWebServerRequest *request) {
 static void handleBleStatus(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
 
-    static const char *oxi_names[] = {
-        "DISABLED", "SCANNING", "CONNECTING", "BONDING",
-        "STREAMING", "DISCONNECTED"
-    };
-
     oxi_state_t st = OxiBle::get_state();
     const oxi_reading_t &r = OxiArbiter::get_reading();
     auto &cfg = Config::get();
 
     String json = "{";
-    jsonAddString(json, "state", oxi_names[st], false);
+    jsonAddString(json, "state", oxi_state_name(st), false);
     jsonAddString(json, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
@@ -1134,16 +1120,13 @@ void WebUI::handle() {
     if (events && events->count() > 0 && (ble_changed || millis() - last_status_push >= 3000)) {
         last_status_push = millis();
 
-        static const char *sys_names[] = {"IDLE","THERAPY","BOOTLOADER","OTA_ESP","OTA_AIRSENSE","TRANSPARENT","ERROR"};
-        static const char *oxi_names[] = {"DISABLED","SCANNING","CONNECTING","BONDING","STREAMING","DISCONNECTED"};
-
         system_state_t sys = Arbiter::get_state();
         oxi_state_t oxi = OxiBle::get_state();
         const oxi_reading_t &r = OxiArbiter::get_reading();
 
         String sj = "{";
-        jsonAddString(sj, "system", sys_names[sys], false);
-        jsonAddString(sj, "oxi", oxi_names[oxi]);
+        jsonAddString(sj, "system", system_state_name(sys), false);
+        jsonAddString(sj, "oxi", oxi_state_name(oxi));
         jsonAddString(sj, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
         jsonAddInt(sj, "spo2", r.valid ? r.spo2 : -1);
         jsonAddInt(sj, "pulse", r.valid ? r.pulse_bpm : -1);
