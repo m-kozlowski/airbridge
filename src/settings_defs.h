@@ -7,17 +7,6 @@ typedef enum {
     SET_INT,        // raw integer
 } setting_type_t;
 
-// UI groups
-typedef enum {
-    GRP_PATIENT,
-    GRP_CLINICAL,
-    GRP_MODE,
-    GRP_COMFORT,
-    GRP_CLIMATE,
-    GRP_SYSTEM,
-    GRP_ALARM,
-} setting_group_t;
-
 
 struct var_def_t {
     const char *cmd;            // 3-letter UART command
@@ -200,15 +189,3 @@ static const char * const ALARM_VARS[] = {
     "ALV", "HLE", "NMF", "SPX", "APX", "LMA", NULL
 };
 
-static const char *group_name(setting_group_t g) {
-    switch (g) {
-        case GRP_PATIENT:  return "patient";
-        case GRP_CLINICAL: return "clinical";
-        case GRP_MODE:     return "mode";
-        case GRP_COMFORT:  return "comfort";
-        case GRP_CLIMATE:  return "climate";
-        case GRP_SYSTEM:   return "system";
-        case GRP_ALARM:    return "alarm";
-        default:           return "other";
-    }
-}

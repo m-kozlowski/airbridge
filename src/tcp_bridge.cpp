@@ -238,22 +238,4 @@ void TcpBridge::init() {
                             nullptr, TCP_TASK_PRIO, &tcp_task_handle, 0);
 }
 
-bool TcpBridge::has_client() {
-    return client && client.connected();
-}
 
-void TcpBridge::send_to_client(const char *msg) {
-    if (client && client.connected()) {
-        client.print(msg);
-    }
-}
-
-void TcpBridge::send_to_client(const uint8_t *data, size_t len) {
-    if (client && client.connected()) {
-        client.write(data, len);
-    }
-}
-
-void TcpBridge::respond(const String &msg) {
-    send_to_client(msg.c_str());
-}

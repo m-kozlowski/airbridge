@@ -508,7 +508,6 @@ static void handleUploadDone(AsyncWebServerRequest *request) {
 struct live_sample_t {
     int16_t press;
     int16_t flow;
-    int16_t leak;
 };
 
 static live_sample_t live_buf[LIVE_BUF_SIZE];
@@ -548,7 +547,7 @@ static void live_sampler_task(void *param) {
         }
 
         uint16_t idx = live_head % LIVE_BUF_SIZE;
-        live_buf[idx] = {press, flow, 0};
+        live_buf[idx] = {press, flow};
         live_head++;
         live_seq++;
 
@@ -608,8 +607,6 @@ static void handleLive(AsyncWebServerRequest *request) {
         json += String(live_buf[idx].press);
         json += ',';
         json += String(live_buf[idx].flow);
-        json += ',';
-        json += String(live_buf[idx].leak);
         json += ']';
     }
 
