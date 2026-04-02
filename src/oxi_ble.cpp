@@ -30,8 +30,12 @@ static volatile bool state_dirty = false;
 static inline void set_state(oxi_state_t s) { state = s; state_dirty = true; }
 static oxi_reading_t reading = { -1, -1, false, 0 };  // local copy for callbacks
 static volatile bool scan_requested = false;
-static volatile bool connect_requested = false;
+typedef enum { CONN_NONE, CONN_AUTO, CONN_USER } connect_mode_t;
+static volatile connect_mode_t connect_mode = CONN_NONE;
 static volatile bool disconnect_requested = false;
+
+#define USER_CONNECT_RETRIES  3
+#define USER_RETRY_DELAY_MS   2000
 static volatile bool scan_complete = false;
 static String target_addr = "";
 
@@ -126,7 +130,7 @@ class OxiClientCB : public NimBLEClientCallbacks {
 
     void onDisconnect(NimBLEClient *client, int reason) override {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Disconnected (reason=0x%X)\n", reason);
-        OxiArbiter::feed(OXI_SRC_BLE, -1, -1, false);
+        OxiArbiter::stop_feed();
         if (state == OXI_STREAMING || state == OXI_BONDING) {
             set_state(OXI_DISCONNECTED);
         }
@@ -243,7 +247,7 @@ static void set_nonin_datetime(NimBLEClient *cl) {
 
 void OxiBle::task(void *param) {
     NimBLEDevice::init(Config::get().hostname.c_str());
-    NimBLEDevice::setSecurityAuth(true, true, true);
+    NimBLEDevice::setSecurityAuth(true, false, false);
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
 
     pClient = NimBLEDevice::createClient();
@@ -299,7 +303,7 @@ void OxiBle::task(void *param) {
                         }
                     }
                     if (found) {
-                        connect_requested = true;
+                        connect_mode = CONN_AUTO;
                         Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Auto-connect triggered\n");
                     }
                 }
@@ -320,16 +324,22 @@ void OxiBle::task(void *param) {
             pScan->start(SCAN_DURATION_MS);
         }
 
-        if (connect_requested) {
-            connect_requested = false;
+        if (connect_mode != CONN_NONE) {
+            connect_mode_t mode = connect_mode;
+            connect_mode = CONN_NONE;
             NimBLEDevice::getScan()->stop();
-            vTaskDelay(pdMS_TO_TICKS(50));
+            // Wait for scan to actually stop before connecting
+            for (int i = 0; i < 20 && NimBLEDevice::getScan()->isScanning(); i++)
+                vTaskDelay(pdMS_TO_TICKS(50));
+            scan_complete = false;  // discard any pending scan-complete trigger
 
             String addr = target_addr;
             if (addr.length() == 0 && cfg.oxi_device_addr.length() > 0)
                 addr = cfg.oxi_device_addr;
             if (addr.length() == 0 && scan_result_count > 0)
                 addr = scan_results[0].addr;
+
+            int max_attempts = (mode == CONN_USER) ? USER_CONNECT_RETRIES : 1;
 
             if (addr.length() > 0) {
                 set_state(OXI_CONNECTING);
@@ -342,59 +352,93 @@ void OxiBle::task(void *param) {
                     }
                 }
 
-                // cancel any pending connection and clean up stale state
-                if (pClient->isConnected()) {
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Disconnecting stale connection\n");
-                    pClient->disconnect();
-                    vTaskDelay(pdMS_TO_TICKS(1000));
-                } else {
-                    // cancel pending connect that hasn't completed yet (EALREADY)
+                NimBLEAddress bleAddr(std::string(addr.c_str()), atype);
+                bool ok = false;
+
+                for (int attempt = 1; attempt <= max_attempts; attempt++) {
+                    if (attempt > 1) {
+                        Log::logf(CAT_OXI, LOG_INFO, "[OXI] Retry %d/%d after %dms\n",
+                                  attempt, max_attempts, USER_RETRY_DELAY_MS);
+                        vTaskDelay(pdMS_TO_TICKS(USER_RETRY_DELAY_MS));
+                    }
+
+                    // cancel any pending connection and clean up stale state
+                    if (pClient->isConnected()) {
+                        Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Disconnecting stale connection\n");
+                        pClient->disconnect();
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                    }
+                    // always cancel pending connect - even after disconnect
                     pClient->cancelConnect();
                     vTaskDelay(pdMS_TO_TICKS(500));
-                }
 
-                Log::logf(CAT_OXI, LOG_INFO, "[OXI] Connecting to %s (type=%d)...\n", addr.c_str(), atype);
+                    Log::logf(CAT_OXI, LOG_INFO, "[OXI] Connecting to %s (type=%d, %s, attempt %d/%d)...\n",
+                              addr.c_str(), atype, mode == CONN_USER ? "user" : "auto",
+                              attempt, max_attempts);
 
-                NimBLEAddress bleAddr(std::string(addr.c_str()), atype);
-                bool ok = pClient->connect(bleAddr);
+                    ok = pClient->connect(bleAddr);
 
-                if (!ok) {
-                    int err = pClient->getLastError();
-                    Log::logf(CAT_OXI, LOG_WARN, "[OXI] connect() returned false (err=%d)\n", err);
+                    if (!ok) {
+                        int err = pClient->getLastError();
+                        Log::logf(CAT_OXI, LOG_WARN, "[OXI] connect() failed (err=%d)\n", err);
 
-                    // EALREADY: previous connect still in flight.
-                    // Wait and check if it actually connected.
-                    if (err == 2) {
-                        Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Waiting for pending connect...\n");
-                        for (int i = 0; i < 50 && !pClient->isConnected(); i++)
-                            vTaskDelay(pdMS_TO_TICKS(200));
-                        ok = pClient->isConnected();
-                        Log::logf(CAT_OXI, LOG_INFO, "[OXI] Pending connect %s\n", ok ? "succeeded" : "failed");
-                    }
+                        // EALREADY: previous connect still in flight
+                        if (err == 2) {
+                            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Waiting for pending connect...\n");
+                            for (int i = 0; i < 50 && !pClient->isConnected(); i++)
+                                vTaskDelay(pdMS_TO_TICKS(200));
+                            ok = pClient->isConnected();
+                            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Pending connect %s\n", ok ? "succeeded" : "failed");
+                            if (ok) vTaskDelay(pdMS_TO_TICKS(500));  // settle before security
+                        }
 
-                    // EDONE: stale bond. Delete and retry.
-                    if (!ok && err == 13) {
-                        Log::logf(CAT_OXI, LOG_INFO, "[OXI] Removing bond and retrying\n");
-                        NimBLEDevice::deleteBond(bleAddr);
-                        vTaskDelay(pdMS_TO_TICKS(500));
-                        ok = pClient->connect(bleAddr);
-                        if (!ok) {
-                            Log::logf(CAT_OXI, LOG_WARN, "[OXI] Retry failed (err=%d)\n",
-                                      pClient->getLastError());
+                        // EDONE: stale bond - delete and retry within this attempt
+                        if (!ok && err == 13) {
+                            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Removing stale bond and retrying\n");
+                            NimBLEDevice::deleteBond(bleAddr);
+                            vTaskDelay(pdMS_TO_TICKS(500));
+                            ok = pClient->connect(bleAddr);
+                            if (!ok) {
+                                Log::logf(CAT_OXI, LOG_WARN, "[OXI] Post-bond-delete retry failed (err=%d)\n",
+                                          pClient->getLastError());
+                            }
                         }
                     }
+
+                    if (ok) break;
+
+                    // check if disconnect was requested while we were retrying
+                    if (disconnect_requested) break;
                 }
 
                 if (ok) {
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Connected, waiting for encryption\n");
+                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Connected, initiating encryption\n");
                     set_state(OXI_BONDING);
 
-                    for (int i = 0; i < 30 && pClient->isConnected(); i++) {
-                        if (pClient->secureConnection()) break;
-                        vTaskDelay(pdMS_TO_TICKS(100));
+                    // secureConnection(false) blocks until encrypted or failure.
+                    // Nonin 3150 sends slave security request after 4s and disconnects 4s later
+                    // if still unencrypted, so this must complete within ~8s.
+                    bool secured = pClient->secureConnection(false);
+                    int sec_err = pClient->getLastError();
+                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Encryption: secure=%d connected=%d err=%d\n",
+                              secured, pClient->isConnected(), sec_err);
+
+                    // encryption failed
+                    if (!secured && pClient->isConnected()) {
+                        Log::logf(CAT_OXI, LOG_WARN, "[OXI] Encryption failed, disconnecting to retry\n");
+                        pClient->disconnect();
+                        vTaskDelay(pdMS_TO_TICKS(500));
+                        ok = false;
+                        if (disconnect_requested) break;
+                        continue;
                     }
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Encryption: secure=%d connected=%d\n",
-                              pClient->secureConnection(), pClient->isConnected());
+
+                    if (!pClient->isConnected()) {
+                        Log::logf(CAT_OXI, LOG_WARN, "[OXI] Lost connection during encryption\n");
+                        ok = false;
+                        if (disconnect_requested) break;
+                        continue;
+                    }
 
                     if (subscribe_services(pClient)) {
                         set_nonin_datetime(pClient);
@@ -409,7 +453,8 @@ void OxiBle::task(void *param) {
                         set_state(OXI_DISCONNECTED);
                     }
                 } else {
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Connect failed, backing off %dms\n", RECONNECT_DELAY_MS);
+                    Log::logf(CAT_OXI, LOG_INFO, "[OXI] Connect failed after %d attempt(s), backing off\n",
+                              max_attempts);
                     set_state(OXI_DISCONNECTED);
                     last_reconnect = millis();
                 }
@@ -442,7 +487,7 @@ void OxiBle::stop_scan()   { NimBLEDevice::getScan()->stop(); }
 
 void OxiBle::connect(const char *addr) {
     target_addr = addr ? addr : "";
-    connect_requested = true;
+    connect_mode = CONN_USER;
 }
 
 void OxiBle::disconnect()  { disconnect_requested = true; }

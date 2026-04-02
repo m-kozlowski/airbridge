@@ -100,10 +100,12 @@ void OxiArbiter::init() {
 void OxiArbiter::feed(oxi_source_t src, int8_t spo2, int16_t pulse_bpm, bool valid) {
     if (src_active != OXI_SRC_NONE && src_active != src) return;
 
-    if (src_active == OXI_SRC_NONE && src != OXI_SRC_NONE) {
+    // Only claim source on valid data
+    if (src_active == OXI_SRC_NONE && valid) {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Source active: %s\n", src_name(src));
         Arbiter::lcd_message("Oximeter Connected", 15000);
     }
+    if (!valid && src_active == OXI_SRC_NONE) return;
 
     src_active = src;
     src_last_time = millis();
@@ -135,11 +137,12 @@ void OxiArbiter::poll() {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Source %s timed out\n", src_name(src_active));
         src_active = OXI_SRC_NONE;
         reading.valid = false;
+        if (feeding) stop_feed();
     }
 
     // inject at configured interval
     auto &cfg = Config::get();
-    if (feeding && millis() - last_inject >= cfg.oxi_interval_ms) {
+    if (feeding && src_active != OXI_SRC_NONE && millis() - last_inject >= cfg.oxi_interval_ms) {
         last_inject = millis();
         inject_lframe();
     }

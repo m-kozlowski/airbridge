@@ -771,6 +771,7 @@ static void handleBleAction(AsyncWebServerRequest *request) {
                 NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
                 Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   bond[%d]: %s type=%d\n", i, ba.toString().c_str(), ba.getType());
             }
+            OxiBle::stop_scan();
             OxiBle::disconnect();
             vTaskDelay(pdMS_TO_TICKS(500));
             bool deleted = false;
@@ -803,6 +804,7 @@ static void handleBleAction(AsyncWebServerRequest *request) {
     } else if (action == "delete_all_bonds") {
         int nb = NimBLEDevice::getNumBonds();
         Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] Deleting all %d bonds\n", nb);
+        OxiBle::stop_scan();
         OxiBle::disconnect();
         vTaskDelay(pdMS_TO_TICKS(500));
         NimBLEDevice::deleteAllBonds();

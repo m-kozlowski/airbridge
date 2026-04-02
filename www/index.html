@@ -468,13 +468,15 @@ function updateStatusFromPush(d) {
   updateBleFromPush(d);
 }
 
+var lastBleState = '';
 function updateBleFromPush(d) {
   var pane = document.getElementById('bluetooth');
   if (!pane || !pane.classList.contains('active')) return;
   var g = document.getElementById('bleStatusGrid');
   if (!g || !g.children.length) { loadBle(); return; }
+  var st = d.oxi || d.state;
   var fields = {
-    state: d.oxi || d.state, feeding: d.feeding,
+    state: st, feeding: d.feeding,
     spo2: d.spo2 >= 0 ? d.spo2 + '%' : '--',
     pulse: d.pulse >= 0 ? d.pulse + ' bpm' : '--'
   };
@@ -482,6 +484,28 @@ function updateBleFromPush(d) {
     var el = g.querySelector('[data-field="' + k + '"]');
     if (el) el.textContent = fields[k];
   }
+  var sp = document.getElementById('bleScanSpinner');
+  if (sp) sp.style.display = st === 'SCANNING' ? 'inline-block' : 'none';
+  // Refresh device list when scan completes
+  if (lastBleState === 'SCANNING' && st !== 'SCANNING') loadBle();
+  if (pendingConnect) {
+    var msgEl = document.getElementById('bleMsg');
+    if (st === 'STREAMING') {
+      pendingConnect = false;
+      showMsg(msgEl, 'Connected', 'ok');
+      loadBle();
+    } else if (st === 'DISABLED') {
+      pendingConnect = false;
+      showMsg(msgEl, 'Connection failed', 'err');
+      loadBle();
+    } else if (st === 'DISCONNECTED' && lastBleState !== 'CONNECTING' && lastBleState !== 'BONDING') {
+      // Only treat as failure if we weren't mid-retry
+      pendingConnect = false;
+      showMsg(msgEl, 'Connection failed', 'err');
+      loadBle();
+    }
+  }
+  lastBleState = st;
 }
 
 function updateFlashFromPush(d) {
@@ -1115,10 +1139,13 @@ async function bleScan() {
   }, 1500);
 }
 
+var pendingConnect = false;
+
 async function bleConnect(addr) {
-  showMsg(document.getElementById('bleMsg'), 'Connecting to ' + addr + '...', 'ok');
+  var msgEl = document.getElementById('bleMsg');
+  showMsg(msgEl, 'Connecting to ' + addr + '...', 'ok', 0);
+  pendingConnect = true;
   await bleAction('connect', addr);
-  setTimeout(loadBle, 2000);
 }
 
 async function bleAction(action, addr) {
