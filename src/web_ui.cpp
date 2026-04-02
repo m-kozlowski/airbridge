@@ -31,6 +31,27 @@ static bool checkAuth(AsyncWebServerRequest *request) {
     return true;
 }
 
+// iterate json string key-value pairs
+// calls fn(key, val) for each pair. Only handles string values.
+typedef void (*json_kv_fn)(const String &key, const String &val, void *ctx);
+static void json_foreach_kv(const String &body, json_kv_fn fn, void *ctx) {
+    int pos = 0;
+    while (pos < (int)body.length()) {
+        int ks = body.indexOf('"', pos);
+        if (ks < 0) break;
+        int ke = body.indexOf('"', ks + 1);
+        if (ke < 0) break;
+        String key = body.substring(ks + 1, ke);
+        int vs = body.indexOf('"', ke + 1);
+        if (vs < 0) break;
+        int ve = body.indexOf('"', vs + 1);
+        if (ve < 0) break;
+        String val = body.substring(vs + 1, ve);
+        pos = ve + 1;
+        fn(key, val, ctx);
+    }
+}
+
 static int parseResponseValue(const char *resp) {
     const char *v = qframe_response_value(resp);
     return v ? (int)strtol(v, nullptr, 16) : -1;
@@ -286,39 +307,16 @@ static void handlePostSettings(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
 
     String body = getBody(request);
-    String errors = "";
-    int count = 0;
-
-    int pos = 0;
-    while (pos < (int)body.length()) {
-        int keyStart = body.indexOf('"', pos);
-        if (keyStart < 0) break;
-        int keyEnd = body.indexOf('"', keyStart + 1);
-        if (keyEnd < 0) break;
-        String key = body.substring(keyStart + 1, keyEnd);
-
-        int valStart = body.indexOf('"', keyEnd + 1);
-        if (valStart < 0) break;
-        int valEnd = body.indexOf('"', valStart + 1);
-        if (valEnd < 0) break;
-        String val = body.substring(valStart + 1, valEnd);
-        pos = valEnd + 1;
-
+    struct { int count; String errors; } ctx = {0, ""};
+    json_foreach_kv(body, [](const String &key, const String &val, void *p) {
+        auto *c = (decltype(ctx)*)p;
         const var_def_t *def = var_lookup(key.c_str());
-
-        if (!def) {
-            errors += key + ":unknown,";
-            continue;
-        }
-
-        int raw = atoi(val.c_str());
-
-        if (writeSetting(key.c_str(), raw)) {
-            count++;
-        } else {
-            errors += key + ":fail,";
-        }
-    }
+        if (!def) { c->errors += key + ":unknown,"; return; }
+        if (writeSetting(key.c_str(), atoi(val.c_str()))) c->count++;
+        else c->errors += key + ":fail,";
+    }, &ctx);
+    int count = ctx.count;
+    String errors = ctx.errors;
 
     String json = "{";
     jsonAddInt(json, "saved", count, false);
@@ -368,24 +366,9 @@ static void handlePostConfig(AsyncWebServerRequest *request) {
 
     String body = getBody(request);
     int count = 0;
-
-    int pos = 0;
-    while (pos < (int)body.length()) {
-        int keyStart = body.indexOf('"', pos);
-        if (keyStart < 0) break;
-        int keyEnd = body.indexOf('"', keyStart + 1);
-        if (keyEnd < 0) break;
-        String key = body.substring(keyStart + 1, keyEnd);
-
-        int valStart = body.indexOf('"', keyEnd + 1);
-        if (valStart < 0) break;
-        int valEnd = body.indexOf('"', valStart + 1);
-        if (valEnd < 0) break;
-        String val = body.substring(valStart + 1, valEnd);
-        pos = valEnd + 1;
-
-        if (Config::set_value(key.c_str(), val.c_str())) count++;
-    }
+    json_foreach_kv(body, [](const String &key, const String &val, void *p) {
+        if (Config::set_value(key.c_str(), val.c_str())) (*(int*)p)++;
+    }, &count);
 
     if (count > 0) Config::save();
 
@@ -689,26 +672,13 @@ static void handleBleAction(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
 
     String body = getBody(request);
-    String action = "";
-    String addr = "";
-
-
-    int pos = 0;
-    while (pos < (int)body.length()) {
-        int keyStart = body.indexOf('"', pos);
-        if (keyStart < 0) break;
-        int keyEnd = body.indexOf('"', keyStart + 1);
-        if (keyEnd < 0) break;
-        String key = body.substring(keyStart + 1, keyEnd);
-        int valStart = body.indexOf('"', keyEnd + 1);
-        if (valStart < 0) break;
-        int valEnd = body.indexOf('"', valStart + 1);
-        if (valEnd < 0) break;
-        String val = body.substring(valStart + 1, valEnd);
-        pos = valEnd + 1;
-        if (key == "action") action = val;
-        else if (key == "addr") addr = val;
-    }
+    String action, addr;
+    struct { String *action; String *addr; } ctx = {&action, &addr};
+    json_foreach_kv(body, [](const String &key, const String &val, void *p) {
+        auto *c = (decltype(ctx)*)p;
+        if (key == "action") *c->action = val;
+        else if (key == "addr") *c->addr = val;
+    }, &ctx);
 
     String result = "unknown action";
     bool ok = false;
