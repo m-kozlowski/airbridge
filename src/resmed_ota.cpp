@@ -1,6 +1,7 @@
 #include "resmed_ota.h"
 #include "uart_arbiter.h"
 #include "qframe.h"
+#include "crc16.h"
 #include "debug_log.h"
 #include "app_config.h"
 #include <esp_partition.h>
@@ -23,14 +24,6 @@ const esp_partition_t* ResmedOta::get_staging_partition() {
     return esp_ota_get_next_update_partition(running);
 }
 
-static uint16_t crc16_ccitt(const uint8_t *data, size_t len, uint16_t crc = 0xFFFF) {
-    for (size_t i = 0; i < len; i++) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int j = 0; j < 8; j++)
-            crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
-    }
-    return crc;
-}
 
 static bool verify_block_crc(const esp_partition_t *part, size_t offset, size_t size) {
     uint8_t buf[512];

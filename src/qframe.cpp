@@ -1,4 +1,5 @@
 #include "qframe.h"
+#include "crc16.h"
 #include <string.h>
 
 int hex_nibble(uint8_t c) {
@@ -12,19 +13,6 @@ uint8_t nibble_hex(uint8_t n) {
     return (n < 10) ? ('0' + n) : ('A' + n - 10);
 }
 
-uint16_t qframe_crc16(const uint8_t *data, size_t len) {
-    uint16_t crc = 0xFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (int bit = 0; bit < 8; bit++) {
-            if (crc & 0x8000)
-                crc = (crc << 1) ^ 0x1021;
-            else
-                crc <<= 1;
-        }
-    }
-    return crc;
-}
 
 void qframe_parser_init(qframe_parser_t *p) {
     qframe_parser_reset(p);
@@ -154,7 +142,7 @@ bool qframe_parser_feed(qframe_parser_t *p, uint8_t byte) {
             break;
         }
         p->frame.crc_received = (c0 << 12) | (c1 << 8) | (c2 << 4) | c3;
-        p->frame.crc_computed = qframe_crc16(p->raw_buf, p->raw_count);
+        p->frame.crc_computed = crc16_ccitt(p->raw_buf, p->raw_count);
         p->frame.crc_valid = (p->frame.crc_received == p->frame.crc_computed);
         p->state = QFP_COMPLETE;
         return true;
@@ -199,7 +187,7 @@ int qframe_build(uint8_t type, const uint8_t *payload, uint16_t payload_len,
         }
     }
 
-    uint16_t crc = qframe_crc16(out_buf, pos);
+    uint16_t crc = crc16_ccitt(out_buf, pos);
     out_buf[pos++] = nibble_hex((crc >> 12) & 0xF);
     out_buf[pos++] = nibble_hex((crc >> 8) & 0xF);
     out_buf[pos++] = nibble_hex((crc >> 4) & 0xF);

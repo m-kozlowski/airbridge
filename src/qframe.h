@@ -65,8 +65,6 @@ int         qframe_build(uint8_t type, const uint8_t *payload, uint16_t payload_
 
 int         qframe_build_cmd(const char *cmd, uint8_t *out_buf, uint16_t out_buf_size);
 
-uint16_t    qframe_crc16(const uint8_t *data, size_t len);
-
 int         hex_nibble(uint8_t c);
 uint8_t     nibble_hex(uint8_t n);
 
