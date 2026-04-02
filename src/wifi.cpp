@@ -74,7 +74,7 @@ static bool try_smartconfig(uint32_t timeout_ms = 60000) {
 
     if (!WiFi.smartConfigDone()) {
         WiFi.stopSmartConfig();
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] SmartConfig timeout\n");
+        Log::logf(CAT_TCP, LOG_WARN, "[WIFI] SmartConfig timeout\n");
         return false;
     }
 

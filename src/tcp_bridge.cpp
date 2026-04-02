@@ -149,7 +149,7 @@ void TcpBridge::poll_debug_clients() {
         if (slot >= 0) {
             debug_clients[slot] = nc;
             debug_clients[slot].setNoDelay(true);
-            Log::logf(CAT_TCP, LOG_DEBUG, "[DBG] Debug client %d connected from %s\n",
+            Log::logf(CAT_TCP, LOG_INFO, "[DBG] Debug client %d connected from %s\n",
                         slot, nc.remoteIP().toString().c_str());
         } else {
             nc.println("ERR: max debug clients");
@@ -169,7 +169,7 @@ void TcpBridge::task(void *param) {
     auto &cfg = Config::get();
 
     if (cfg.wifi_mode == 2) {
-        Log::logf(CAT_TCP, LOG_WARN, "[TCP] WiFi disabled, TCP bridge not starting\n");
+        Log::logf(CAT_TCP, LOG_INFO, "[TCP] WiFi disabled, TCP bridge not starting\n");
         vTaskDelete(nullptr);
         return;
     }

@@ -144,9 +144,9 @@ class OxiClientCB : public NimBLEClientCallbacks {
 
     void onAuthenticationComplete(NimBLEConnInfo &connInfo) override {
         if (connInfo.isEncrypted()) {
-            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Encrypted + bonded\n");
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Encrypted + bonded\n");
         } else {
-            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Auth complete (no encryption)\n");
+            Log::logf(CAT_OXI, LOG_WARN, "[OXI] Auth complete (no encryption)\n");
         }
     }
 };
@@ -443,7 +443,7 @@ void OxiBle::task(void *param) {
                         set_state(OXI_DISCONNECTED);
                     }
                 } else {
-                    Log::logf(CAT_OXI, LOG_INFO, "[OXI] Connect failed after %d attempt(s), backing off\n",
+                    Log::logf(CAT_OXI, LOG_WARN, "[OXI] Connect failed after %d attempt(s), backing off\n",
                               max_attempts);
                     set_state(OXI_DISCONNECTED);
                     last_reconnect = millis();

@@ -162,7 +162,7 @@ static void rx_task(void *param) {
                     }
                 } else {
                     stat_error++;
-                    Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX frame CRC error t=%lu\n", millis());
+                    Log::logf(CAT_ARB, LOG_WARN, "[ARB] RX frame CRC error t=%lu\n", millis());
                 }
                 qframe_parser_reset(&rx_parser);
             }
@@ -189,8 +189,14 @@ static void arbiter_task(void *param) {
         uart->write(t->frame, t->frame_len);
         uart->flush();
         stat_tx++;
-        Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] TX type=%c len=%u src=%d prio=%d t=%lu\n",
-                  (char)t->frame[1], t->frame_len, t->source, t->priority, millis());
+        {
+            // payload starts at offset=5
+            char snip[33] = {};
+            int plen = t->frame_len > 5 ? t->frame_len - 9 : 0;  // minus header(5)+crc(4)
+            if (plen > 0) memcpy(snip, t->frame + 5, min(plen, 32));
+            Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] TX %s src=%d prio=%d t=%lu\n",
+                      snip, t->source, t->priority, millis());
+        }
 
         if (t->no_ack) {
             t->success = true;
@@ -207,9 +213,12 @@ static void arbiter_task(void *param) {
             }
             t->success = (last_rx_frame.type == QFRAME_TYPE_R);
             t->timed_out = false;
-            Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX type=%c len=%u %s t=%lu\n",
-                      (char)t->resp_type, t->resp_len,
-                      t->success ? "ok" : "err", millis());
+            {
+                char snip[33] = {};
+                if (t->resp_len > 0) memcpy(snip, t->resp_payload, min((int)t->resp_len, 32));
+                Log::logf(CAT_ARB, LOG_DEBUG, "[ARB] RX %s %s t=%lu\n",
+                          snip, t->success ? "ok" : "err", millis());
+            }
             if (last_rx_frame.type == QFRAME_TYPE_E) {
                 stat_error++;
             }
