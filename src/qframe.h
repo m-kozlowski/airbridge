@@ -69,3 +69,5 @@ uint16_t    qframe_crc16(const uint8_t *data, size_t len);
 
 int         hex_nibble(uint8_t c);
 uint8_t     nibble_hex(uint8_t n);
+
+const char *qframe_response_value(const char *resp);

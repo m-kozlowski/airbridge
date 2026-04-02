@@ -1,5 +1,6 @@
 #include "app_config.h"
 #include "uart_arbiter.h"
+#include "qframe.h"
 #include <Preferences.h>
 
 #define CFG_DEFAULT_TCP_PORT    23
@@ -127,15 +128,6 @@ AirBridgeConfig& Config::get() {
     return cfg;
 }
 
-static String parse_response_str(const char *resp) {
-    const char *eq = strstr(resp, "= ");
-    if (!eq) return "";
-    String val = eq + 2;
-    int end = val.indexOf(" #");
-    if (end > 0) val = val.substring(0, end);
-    val.trim();
-    return val;
-}
 
 void Config::refresh_device_info() {
     char resp[64] = {};
@@ -146,7 +138,8 @@ void Config::refresh_device_info() {
         memset(resp, 0, sizeof(resp));
         if (Arbiter::send_cmd("G S #PNA", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
                                resp, &len)) {
-            cfg.device_pna = parse_response_str(resp);
+            const char *v = qframe_response_value(resp);
+            if (v) cfg.device_pna = v;
         }
     }
 
@@ -155,7 +148,8 @@ void Config::refresh_device_info() {
         memset(resp, 0, sizeof(resp));
         if (Arbiter::send_cmd("G S #SRN", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
                                resp, &len)) {
-            cfg.device_srn = parse_response_str(resp);
+            const char *v = qframe_response_value(resp);
+            if (v) cfg.device_srn = v;
         }
     }
 }

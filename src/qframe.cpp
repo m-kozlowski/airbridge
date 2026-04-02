@@ -212,3 +212,9 @@ int qframe_build_cmd(const char *cmd, uint8_t *out_buf, uint16_t out_buf_size) {
     return qframe_build(QFRAME_TYPE_Q, (const uint8_t *)cmd, strlen(cmd),
                         out_buf, out_buf_size);
 }
+
+const char *qframe_response_value(const char *resp) {
+    if (!resp) return NULL;
+    const char *eq = strstr(resp, "= ");
+    return eq ? eq + 2 : NULL;
+}

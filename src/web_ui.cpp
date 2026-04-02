@@ -31,14 +31,9 @@ static bool checkAuth(AsyncWebServerRequest *request) {
     return true;
 }
 
-// Response format: "X S #CMD = XXXX #" or just hex digits after "= "
 static int parseResponseValue(const char *resp) {
-    const char *eq = strstr(resp, "= ");
-    if (!eq) return -1;
-    // Skip "= ", read hex
-    const char *val = eq + 2;
-    // Strip trailing " #" if present
-    return (int)strtol(val, nullptr, 16);
+    const char *v = qframe_response_value(resp);
+    return v ? (int)strtol(v, nullptr, 16) : -1;
 }
 
 static bool readSetting(const char *cmd, int &value) {
@@ -161,9 +156,9 @@ static void handleStatus(AsyncWebServerRequest *request) {
 
     char resmed_time[20] = "--";
     if (got_dac && got_tic) {
-        char *dv = strstr(dac_resp, "= "), *tv = strstr(tic_resp, "= ");
-        if (dv && tv && strlen(dv+2) >= 8 && strlen(tv+2) >= 6) {
-            dv += 2; tv += 2;
+        const char *dv = qframe_response_value(dac_resp);
+        const char *tv = qframe_response_value(tic_resp);
+        if (dv && tv && strlen(dv) >= 8 && strlen(tv) >= 6) {
             // Insert separators so sscanf can parse fixed-width fields
             int dd, mm, yyyy, hh, mn, ss;
             if (sscanf(dv, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
@@ -518,9 +513,9 @@ static TaskHandle_t live_task_handle = nullptr;
 
 
 static int16_t parse_signed_hex(const char *resp, int bits = 16) {
-    const char *eq = strstr(resp, "= ");
-    if (!eq) return -32768;
-    long val = strtol(eq + 2, nullptr, 16);
+    const char *v = qframe_response_value(resp);
+    if (!v) return -32768;
+    long val = strtol(v, nullptr, 16);
     long half = 1L << (bits - 1);
     if (val >= half) val -= (half << 1);
     return (int16_t)val;

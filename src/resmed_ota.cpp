@@ -227,8 +227,8 @@ static bool check_bid(const esp_partition_t *part, size_t blx_partition_offset, 
         return false;
     }
 
-    char *eq = strstr(dev_bid, "= ");
-    const char *dev_bid_str = eq ? eq + 2 : dev_bid;
+    const char *dev_bid_str = qframe_response_value(dev_bid);
+    if (!dev_bid_str) dev_bid_str = dev_bid;
 
     if (strncmp(img_bid, dev_bid_str, 20) != 0) {
         snprintf(flash_error, sizeof(flash_error),
@@ -248,8 +248,8 @@ static bool enter_bootloader(bool send_bll = true) {
     if (send_bll) {
         // Check if already in bootloader
         if (send_raw_cmd("G S #BLS", resp, sizeof(resp), 300)) {
-            char *eq = strstr(resp, "= ");
-            if (eq && strtol(eq + 2, nullptr, 16) >= 1) {
+            const char *bv = qframe_response_value(resp);
+            if (bv && strtol(bv, nullptr, 16) >= 1) {
                 Log::logf(CAT_OTA, LOG_INFO, "[OTA] Already in bootloader\n");
                 return true;
             }
@@ -264,9 +264,9 @@ static bool enter_bootloader(bool send_bll = true) {
         memset(resp, 0, sizeof(resp));
         bool got = send_raw_cmd("G S #BLS", resp, sizeof(resp), 100);
         if (got) {
-            char *eq = strstr(resp, "= ");
-            if (eq) {
-                int bls = (int)strtol(eq + 2, nullptr, 16);
+            const char *bv = qframe_response_value(resp);
+            if (bv) {
+                int bls = (int)strtol(bv, nullptr, 16);
                 if (bls >= 1) {
                     Log::logf(CAT_OTA, LOG_INFO, "[OTA] In bootloader (BLS=%d) after %d polls\n", bls, i);
                     return true;
@@ -597,9 +597,9 @@ static void flash_task(void *param) {
             vTaskDelay(pdMS_TO_TICKS(1000));
             memset(resp, 0, sizeof(resp));
             if (send_raw_cmd("G S #BLS", resp, sizeof(resp), 2000)) {
-                char *eq = strstr(resp, "= ");
-                if (eq) {
-                    int bls = (int)strtol(eq + 2, nullptr, 16);
+                const char *bv = qframe_response_value(resp);
+                if (bv) {
+                    int bls = (int)strtol(bv, nullptr, 16);
                     if (bls == 0) { app_running = true; break; }
                 }
             }

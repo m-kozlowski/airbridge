@@ -9,6 +9,7 @@
 #include "oxi_arbiter.h"
 #include "airbridge_ota.h"
 #include "web_ui.h"
+#include "qframe.h"
 
 const char *airbridge_version() { return AIRBRIDGE_VERSION; }
 const char *airbridge_build_date() { return AIRBRIDGE_BUILD_DATE; }
@@ -71,10 +72,9 @@ static void poll_therapy_state() {
     if (ok) {
         consecutive_timeouts = 0;
 
-        // Parse "G S #ROP = XXXX #"
-        char *eq = strstr(resp, "= ");
-        if (eq) {
-            uint32_t val = strtoul(eq + 2, nullptr, 16);
+        const char *rv = qframe_response_value(resp);
+        if (rv) {
+            uint32_t val = strtoul(rv, nullptr, 16);
             system_state_t current = Arbiter::get_state();
 
             if (val == 1 && current == SYS_IDLE) {
@@ -149,11 +149,12 @@ void setup() {
         uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
         Arbiter::send_cmd("G S #DAC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, dac_resp, &dac_len);
         Arbiter::send_cmd("G S #TIC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, tic_resp, &tic_len);
-        char *dv = strstr(dac_resp, "= "), *tv = strstr(tic_resp, "= ");
-        if (dv && tv && strlen(dv+2) >= 8 && strlen(tv+2) >= 6) {
+        const char *dv = qframe_response_value(dac_resp);
+        const char *tv = qframe_response_value(tic_resp);
+        if (dv && tv && strlen(dv) >= 8 && strlen(tv) >= 6) {
             int dd, mm, yyyy, hh, mn, ss;
-            if (sscanf(dv+2, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
-                sscanf(tv+2, "%2d%2d%2d", &hh, &mn, &ss) == 3)
+            if (sscanf(dv, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
+                sscanf(tv, "%2d%2d%2d", &hh, &mn, &ss) == 3)
                 WiFiSetup::set_fallback_time(yyyy, mm, dd, hh, mn, ss);
         }
     }
