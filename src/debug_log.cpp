@@ -1,7 +1,10 @@
 #include "debug_log.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <Preferences.h>
 #include <stdarg.h>
+
+static Preferences log_prefs;
 
 static Print *outputs[LOG_MAX_OUTPUTS] = { &Serial };
 static int output_count = 1;
@@ -10,13 +13,25 @@ static log_level_t cat_levels[CAT_COUNT];
 
 void Log::init() {
     log_mutex = xSemaphoreCreateMutex();
+    log_prefs.begin("log_levels", true);
+    for (int i = 0; i < CAT_COUNT; i++) {
+        cat_levels[i] = (log_level_t)log_prefs.getUChar(
+            Log::cat_name((log_cat_t)i), LOG_INFO);
+    }
+    log_prefs.end();
+}
+
+static void save_levels() {
+    log_prefs.begin("log_levels", false);
     for (int i = 0; i < CAT_COUNT; i++)
-        cat_levels[i] = LOG_INFO;
+        log_prefs.putUChar(Log::cat_name((log_cat_t)i), (uint8_t)cat_levels[i]);
+    log_prefs.end();
 }
 
 void Log::set_level(log_level_t lvl) {
     for (int i = 0; i < CAT_COUNT; i++)
         cat_levels[i] = lvl;
+    save_levels();
 }
 
 log_level_t Log::get_level() {
@@ -24,7 +39,12 @@ log_level_t Log::get_level() {
 }
 
 void Log::set_cat_level(log_cat_t cat, log_level_t lvl) {
-    if (cat < CAT_COUNT) cat_levels[cat] = lvl;
+    if (cat < CAT_COUNT) {
+        cat_levels[cat] = lvl;
+        log_prefs.begin("log_levels", false);
+        log_prefs.putUChar(Log::cat_name(cat), (uint8_t)lvl);
+        log_prefs.end();
+    }
 }
 
 log_level_t Log::get_cat_level(log_cat_t cat) {
