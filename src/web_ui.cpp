@@ -1067,6 +1067,7 @@ void WebUI::handle() {
         String sj = "{";
         jsonAddString(sj, "system", system_state_name(sys), false);
         jsonAddString(sj, "oxi", oxi_state_name(oxi));
+        jsonAddString(sj, "oxi_addr", OxiArbiter::get_source_id());
         jsonAddString(sj, "feeding", OxiArbiter::is_feeding() ? "yes" : "no");
         jsonAddInt(sj, "spo2", r.valid ? r.spo2 : -1);
         jsonAddInt(sj, "pulse", r.valid ? r.pulse_bpm : -1);

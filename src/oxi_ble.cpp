@@ -436,6 +436,7 @@ void OxiBle::task(void *param) {
                     if (subscribe_services(pClient)) {
                         set_nonin_datetime(pClient);
                         set_state(OXI_STREAMING);
+                        OxiArbiter::set_source_id(pClient->getPeerAddress().toString().c_str());
                         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Streaming started\n");
                     } else {
                         Log::logf(CAT_OXI, LOG_WARN, "[OXI] No suitable services, disconnecting\n");

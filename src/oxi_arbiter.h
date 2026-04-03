@@ -16,6 +16,8 @@ namespace OxiArbiter {
     void init();
 
     void feed(oxi_source_t src, int8_t spo2, int16_t pulse_bpm, bool valid);
+    void set_source_id(const char *id);
+    const char *get_source_id();
 
     void start_feed();
     void stop_feed();

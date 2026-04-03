@@ -69,6 +69,8 @@ static void udp_task(void *param) {
 
         if (spo2 >= 0 && spo2 <= 100 && hr >= 0 && hr <= 500) {
             pkt_count++;
+            if (OxiArbiter::active_source() == OXI_SRC_NONE)
+                OxiArbiter::set_source_id(udp.remoteIP().toString().c_str());
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] UDP SpO2=%d HR=%d\n", spo2, hr);
             OxiArbiter::feed(OXI_SRC_UDP, spo2, hr, true);
         } else if (spo2 < 0 || hr < 0) {

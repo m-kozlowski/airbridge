@@ -23,6 +23,7 @@ static oxi_reading_t reading = { -1, -1, false, 0 };
 static volatile bool feeding = false;
 static oxi_source_t src_active = OXI_SRC_NONE;
 static uint32_t src_last_time = 0;
+static char source_id[32] = "";
 
 #define SOURCE_TIMEOUT_MS 10000
 
@@ -139,11 +140,19 @@ const oxi_reading_t& OxiArbiter::get_reading() { return reading; }
 
 oxi_source_t OxiArbiter::active_source() { return src_active; }
 
+void OxiArbiter::set_source_id(const char *id) {
+    strncpy(source_id, id ? id : "", sizeof(source_id) - 1);
+    source_id[sizeof(source_id) - 1] = '\0';
+}
+
+const char *OxiArbiter::get_source_id() { return source_id; }
+
 void OxiArbiter::poll() {
     // release source after timeout
     if (src_active != OXI_SRC_NONE && millis() - src_last_time > SOURCE_TIMEOUT_MS) {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Source %s timed out\n", src_name(src_active));
         src_active = OXI_SRC_NONE;
+        source_id[0] = '\0';
         reading.valid = false;
         if (feeding) stop_feed();
     }
