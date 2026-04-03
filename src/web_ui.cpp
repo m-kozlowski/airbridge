@@ -7,7 +7,9 @@
 #include "resmed_ota.h"
 #include "debug_log.h"
 #include "app_config.h"
+#include "wifi.h"
 
+#include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <esp_partition.h>
 #include <time.h>
@@ -195,6 +197,8 @@ static void handleStatus(AsyncWebServerRequest *request) {
     jsonAddInt(json, "spo2", r.valid ? r.spo2 : -1);
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
     jsonAddInt(json, "heap", ESP.getFreeHeap());
+    jsonAddInt(json, "rssi", WiFi.RSSI());
+    jsonAddInt(json, "uptime", millis() / 1000);
     json += '}';
 
     request->send(200, "application/json", json);
@@ -239,7 +243,8 @@ static void emitVar(String &json, const var_def_t *v, const char *group, int raw
             char buf[16];
             snprintf(buf, sizeof(buf), "%.*f", v->decimals, disp);
             jsonAddString(json, "display", buf);
-            float step = 1.0f / (float)v->scale_div;
+            float step = 1.0f;
+            for (int d = 0; d < v->decimals; d++) step /= 10.0f;
             snprintf(buf, sizeof(buf), "%g", step);
             jsonAddString(json, "step", buf);
         }
@@ -1066,6 +1071,8 @@ void WebUI::handle() {
         jsonAddInt(sj, "spo2", r.valid ? r.spo2 : -1);
         jsonAddInt(sj, "pulse", r.valid ? r.pulse_bpm : -1);
         jsonAddInt(sj, "heap", ESP.getFreeHeap());
+        jsonAddInt(sj, "rssi", WiFi.RSSI());
+        jsonAddInt(sj, "uptime", millis() / 1000);
         sj += '}';
         events->send(sj.c_str(), "status", millis());
     }
