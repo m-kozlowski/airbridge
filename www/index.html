@@ -5,463 +5,494 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AirBridge</title>
 <style>
-* {
-    box-sizing:border-box;
-    margin:0;
-    padding:0
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d1a;--surface:#141428;--card:#1a1a32;--border:#252545;--border-light:#2a2a4a;
+  --text:#e0e0e0;--text-dim:#888;--accent:#00d4aa;--accent-dim:#00d4aa33;
+  --red:#e94560;--green:#4ade80;--blue:#818cf8;--cyan:#22d3ee;--orange:#fb923c
 }
-body {
-    font-family:-apple-system,sans-serif;
-    background:#1a1a2e;
-    color:#e0e0e0;
-    min-height:100vh
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden}
+.app{display:grid;grid-template-columns:220px 1fr;height:100vh}
+
+/* Sidebar */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sidebar .brand{padding:20px 16px;border-bottom:1px solid var(--border)}
+.sidebar .brand h1{font-size:24px;font-weight:700;color:var(--accent);letter-spacing:0.5px}
+.sidebar .brand small{font-size:11px;color:var(--text-dim);display:block;margin-top:2px}
+.sidebar nav{flex:1;padding:8px 0}
+.nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;color:var(--text-dim);text-decoration:none;font-size:16px;cursor:pointer;border-left:3px solid transparent;transition:all 0.15s}
+.nav-item:hover{color:var(--text);background:#ffffff08}
+.nav-item.active{color:var(--accent);background:var(--accent-dim);border-left-color:var(--accent)}
+.nav-item .icon{font-size:16px;width:20px;text-align:center}
+
+/* Main */
+.main{display:flex;flex-direction:column;overflow:hidden}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.topbar .left{display:flex;align-items:center;gap:12px}
+.topbar .page-title{font-size:16px;font-weight:600}
+.live-badge{background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:1px}
+.topbar .right{display:flex;align-items:center;gap:16px;font-size:12px;color:var(--text-dim)}
+.content{flex:1;overflow-y:auto;padding:20px 24px}
+
+/* Panes */
+.pane{display:none;max-width:900px}.pane.active{display:block}
+
+/* Cards */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px}
+.card h3{color:var(--accent);margin-bottom:12px;font-size:14px;text-transform:uppercase;letter-spacing:0.5px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.card-header .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim)}
+.card-title{font-size:18px;font-weight:600;margin-bottom:4px}
+
+/* Badges */
+.badge{display:inline-block;font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;letter-spacing:0.5px;text-transform:uppercase}
+.badge-therapy{background:#064e3b;color:var(--green);border:1px solid #065f46}
+.badge-streaming{background:#0c4a6e;color:var(--cyan);border:1px solid #0369a1}
+.badge-idle{background:#1e1e3a;color:var(--text-dim);border:1px solid var(--border)}
+.badge-error{background:#450a0a;color:var(--red);border:1px solid #7f1d1d}
+.badge-feed{background:#064e3b;color:var(--green);border:1px solid #065f46}
+
+/* Rows, fields */
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #25254533}
+.row:last-child{border-bottom:none}
+.row label{flex:1;font-size:14px}
+.row select,.row input[type=number]{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;min-width:140px;font-size:14px}
+.row input[type=number]{width:100px}
+input[type=text],input[type=password]{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;width:200px;font-size:14px}
+
+/* Buttons */
+.btn{padding:8px 20px;border:1px solid var(--border-light);border-radius:8px;background:transparent;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;letter-spacing:0.3px;transition:all 0.15s}
+.btn:hover{background:#ffffff0a;border-color:var(--text-dim)}
+.btn:disabled{opacity:0.4;cursor:not-allowed}
+.btn-accent{background:var(--accent);color:#000;border-color:var(--accent)}
+.btn-accent:hover{background:#00c49a}
+.btn-danger{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-danger:hover{background:#c73a52}
+.btn-group{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn-row{margin-top:12px;text-align:right}
+
+/* Status grid */
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 32px}
+.stat{padding:6px 0;font-size:14px;display:flex;justify-content:space-between;border-bottom:1px solid #25254533}
+.stat:last-child{border-bottom:none}
+.stat .k{color:var(--text-dim)}
+.stat .v{color:var(--text);font-weight:500;text-align:right;padding-right:8px}
+
+/* Device info */
+.device-info{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.device-info .label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px}
+.device-info .value{font-size:14px;font-weight:500}
+
+/* Time rows */
+.time-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)}
+.time-row:last-child{border-bottom:none}
+.time-row .label{font-size:12px;color:var(--text-dim)}
+.time-row .value{font-size:14px;font-family:'SF Mono','Consolas',monospace;font-weight:500}
+
+/* Oximeter card */
+.oxi-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.oxi-icon{width:44px;height:44px;border-radius:12px;background:#064e3b;display:flex;align-items:center;justify-content:center;font-size:22px}
+.oxi-values{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.oxi-metric .label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px}
+.oxi-metric .big{font-size:42px;font-weight:700;line-height:1}
+.oxi-metric .unit{font-size:16px;font-weight:400;color:var(--text-dim);margin-left:2px}
+.oxi-badges{display:flex;gap:8px;margin-left:auto}
+
+/* Charts */
+.chart-card{background:#0a0a16;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;overflow:hidden}
+.chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.chart-header .label{font-size:12px;color:var(--text-dim)}
+.chart-header .value{font-size:20px;font-weight:700;font-family:monospace}
+.chart-header .unit{font-size:12px;color:var(--text-dim);margin-left:4px}
+.chart-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.telemetry-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.telemetry-header h3{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text)}
+
+/* Upload */
+.upload-area{border:2px dashed var(--border);border-radius:8px;padding:40px;text-align:center;margin:12px 0;cursor:pointer}
+.upload-area.dragover{border-color:var(--accent);background:#ffffff08}
+.progress{height:6px;background:var(--border);border-radius:3px;margin-top:12px;overflow:hidden;display:none}
+.progress .bar{height:100%;background:var(--accent);width:0;transition:width 0.3s}
+
+/* Messages */
+.msg{padding:8px 12px;border-radius:6px;margin:8px 0;font-size:13px;display:none}
+.msg.ok{display:block;background:#064e3b;color:var(--green);border:1px solid #065f46}
+.msg.err{display:block;background:#450a0a;color:var(--red);border:1px solid #7f1d1d}
+
+/* Toast */
+.toast-container{position:fixed;top:16px;right:16px;z-index:1000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;animation:slideIn 0.3s ease;min-width:240px;box-shadow:0 4px 20px #00000066;pointer-events:auto}
+.toast.ok{background:#064e3b;color:var(--green);border:1px solid #065f46}
+.toast.err{background:#450a0a;color:var(--red);border:1px solid #7f1d1d}
+@keyframes slideIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+/* Spinner */
+.spinner{display:none;border:3px solid #333;border-top:3px solid var(--accent);border-radius:50%;width:20px;height:20px;animation:spin 0.8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Bottom nav (mobile) */
+.bottom-nav{display:none;background:var(--surface);border-top:1px solid var(--border);justify-content:space-around;padding:8px 0;position:fixed;bottom:0;left:0;right:0;z-index:100}
+.bottom-nav .bnav-item{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text-dim);cursor:pointer;padding:4px 8px;text-decoration:none}
+.bottom-nav .bnav-item .icon{font-size:18px}
+.bottom-nav .bnav-item.active{color:var(--accent)}
+
+/* Responsive */
+@media(max-width:768px){
+  .app{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .bottom-nav{display:flex}
+  .content{padding:16px;padding-bottom:72px}
+  .card-grid{grid-template-columns:1fr}
+  .chart-row-2{grid-template-columns:1fr}
+  .topbar{padding:10px 16px}
+  .topbar .page-title{font-size:14px}
+  .oxi-metric .big{font-size:32px}
+  .status-grid{grid-template-columns:1fr}
 }
-.hdr {
-    background:#16213e;
-    padding:12px 20px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    border-bottom:1px solid #0f3460
-}
-.hdr h1 {
-    font-size:18px;
-    color:#e94560
-}
-.hdr .ver {
-    font-size:12px;
-    color:#888
-}
-.tabs {
-    display:flex;
-    background:#16213e;
-    border-bottom:2px solid #0f3460;
-    overflow-x:auto
-}
-.tab {
-    padding:10px 18px;
-    cursor:pointer;
-    color:#888;
-    border-bottom:2px solid transparent;
-    white-space:nowrap;
-    font-size:14px
-}
-.tab:hover {
-    color:#ccc
-}
-.tab.active {
-    color:#e94560;
-    border-bottom-color:#e94560
-}
-.pane {
-    display:none;
-    padding:16px;
-    max-width:800px;
-    margin:0 auto
-}
-.pane.active {
-    display:block
-}
-.card {
-    background:#16213e;
-    border-radius:8px;
-    padding:16px;
-    margin-bottom:12px;
-    border:1px solid #0f3460
-}
-.card h3 {
-    color:#e94560;
-    margin-bottom:12px;
-    font-size:15px
-}
-.row {
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    padding:8px 0;
-    border-bottom:1px solid #0f346033
-}
-.row:last-child {
-    border-bottom:none
-}
-.row label {
-    flex:1;
-    font-size:14px
-}
-.row select,.row input[type=number] {
-    background:#1a1a2e;
-    color:#e0e0e0;
-    border:1px solid #0f3460;
-    border-radius:4px;
-    padding:6px 10px;
-    min-width:140px;
-    font-size:14px
-}
-.row input[type=number] {
-    width:100px
-}
-.btn {
-    background:#e94560;
-    color:#fff;
-    border:none;
-    padding:8px 20px;
-    border-radius:4px;
-    cursor:pointer;
-    font-size:14px
-}
-.btn:hover {
-    background:#c73a52
-}
-.btn:disabled {
-    background:#555;
-    cursor:not-allowed
-}
-.btn-row {
-    margin-top:12px;
-    text-align:right
-}
-.status-grid {
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:8px
-}
-.stat {
-    padding:6px 0;
-    font-size:14px
-}
-.stat .k {
-    color:#888
-}
-.stat .v {
-    color:#e0e0e0;
-    font-weight:500
-}
-.upload-area {
-    border:2px dashed #0f3460;
-    border-radius:8px;
-    padding:40px;
-    text-align:center;
-    margin:12px 0
-}
-.upload-area.dragover {
-    border-color:#e94560;
-    background:#1a1a2e88
-}
-.progress {
-    height:6px;
-    background:#0f3460;
-    border-radius:3px;
-    margin-top:12px;
-    overflow:hidden;
-    display:none
-}
-.progress .bar {
-    height:100%;
-    background:#e94560;
-    width:0;
-    transition:width 0.3s
-}
-.msg {
-    padding:8px 12px;
-    border-radius:4px;
-    margin:8px 0;
-    font-size:13px;
-    display:none
-}
-.msg.ok {
-    display:block;
-    background:#0a3d2a;
-    color:#4ade80
-}
-.msg.err {
-    display:block;
-    background:#3d0a0a;
-    color:#f87171
-}
-.spinner {
-    display:none;
-    border:3px solid #333;
-    border-top:3px solid #e94560;
-    border-radius:50%;
-    width:20px;
-    height:20px;
-    animation:spin 0.8s linear infinite;
-    margin:0 auto
-}
-  @keyframes spin {
-      to {
-          transform:rotate(360deg)
-      }
-  }
-  input[type=text],input[type=password] {
-      background:#1a1a2e;
-      color:#e0e0e0;
-      border:1px solid #0f3460;
-      border-radius:4px;
-      padding:6px 10px;
-      width:200px;
-      font-size:14px
-  }
 </style>
 </head>
 <body>
-    <div class="hdr">
-        <h1>AirBridge</h1>
-        <span class="ver" id="ver"></span>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>AirBridge</h1>
+      <small id="ver"></small>
+      <small id="verBuild" style="color:#555"></small>
     </div>
-    <div class="tabs">
-        <div class="tab active" onclick="showTab('status')">Status</div>
-        <div class="tab" onclick="showTab('report')">Sleep Report</div>
-        <div class="tab" onclick="showTab('patient')">Patient</div>
-        <div class="tab" onclick="showTab('clinical')">Clinical</div>
-        <div class="tab" onclick="showTab('climate')">Climate</div>
-        <div class="tab" onclick="showTab('bluetooth')">Bluetooth</div>
-        <div class="tab" onclick="showTab('console')">Console</div>
-        <div class="tab" onclick="showTab('device')">Device</div>
-        <div class="tab" onclick="showTab('ota')">OTA Upload</div>
+    <nav>
+      <a class="nav-item active" data-tab="status"><span class="icon">&#9878;</span> Dashboard</a>
+      <a class="nav-item" data-tab="report"><span class="icon">&#9776;</span> Sleep Report</a>
+      <a class="nav-item" data-tab="patient"><span class="icon">&#9883;</span> Patient</a>
+      <a class="nav-item" data-tab="clinical"><span class="icon">&#9881;</span> Clinical</a>
+      <a class="nav-item" data-tab="climate"><span class="icon">&#9729;</span> Climate</a>
+      <a class="nav-item" data-tab="bluetooth"><span class="icon">&#9829;</span> Oximetry</a>
+      <a class="nav-item" data-tab="console"><span class="icon">&#9002;</span> Console</a>
+      <a class="nav-item" data-tab="device"><span class="icon">&#9881;</span> Config</a>
+      <a class="nav-item" data-tab="ota"><span class="icon">&#8679;</span> OTA Upload</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="left">
+        <span id="liveIndicator" style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block" title="SSE connected"></span>
+      </div>
+      <div class="right">
+        <span id="topUptime">--</span>
+        <span id="topWifi">WiFi: --</span>
+        <span id="topHeap">-- free</span>
+        <button class="btn" onclick="loadStatus()" style="padding:4px 12px;font-size:11px">Refresh</button>
+      </div>
     </div>
 
-    <!-- STATUS -->
-    <div class="pane active" id="status">
-        <div class="card">
-            <h3>System Status</h3>
-            <div class="spinner" id="statusSpinner"></div>
-            <div class="status-grid" id="statusGrid"></div>
-            <div class="btn-row" style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="btn" onclick="ropCmd('start')" id="btnTherapy">Start Therapy</button>
-                <button class="btn" onclick="ropCmd('standby')" style="background:#c73a52">Standby</button>
-                <button class="btn" onclick="ropCmd('energy_save')" style="background:#555">Power Save</button>
-                <button class="btn" onclick="loadStatus()">Refresh</button>
-            </div>
-        </div>
-        <div class="card">
-            <h3>Live Data</h3>
-            <div style="display:flex;gap:8px;margin-bottom:8px">
-                <button class="btn" id="btnLive" onclick="toggleLive()">Start</button>
-                <span style="color:#888;font-size:13px;line-height:32px" id="liveStatus">Stopped</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr;gap:8px">
-                <canvas id="cPress" height="140"></canvas>
-                <canvas id="cFlow" height="140"></canvas>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;overflow:hidden">
-                    <div style="overflow:hidden">
-                        <canvas id="cSpo2" height="100" style="width:100%"></canvas>
-                    </div>
-                    <div style="overflow:hidden">
-                        <canvas id="cPulse" height="100" style="width:100%"></canvas>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div class="content">
 
-    <!-- SLEEP REPORT -->
-    <div class="pane" id="report">
-        <div class="card">
-            <h3>Last Session</h3>
-            <div class="spinner" id="reportSpinner"></div>
-            <div id="sessionGrid" class="status-grid"></div>
-        </div>
-        <div class="card">
-            <h3>Summary</h3>
-            <div id="summaryGrid" class="status-grid"></div>
-        </div>
-        <div class="btn-row">
-            <button class="btn" onclick="loadReport()">Refresh</button>
-        </div>
-    </div>
-
-    <!-- PATIENT -->
-    <div class="pane" id="patient">
-        <div class="card">
-            <h3>Patient Settings</h3>
-            <div class="spinner" id="patientSpinner"></div>
-            <div id="patientFields"></div>
-            <div class="btn-row">
-                <button class="btn" onclick="saveSettings('patient')">Save</button>
+      <!-- STATUS / DASHBOARD -->
+      <div class="pane active" id="p-status">
+        <div class="card-grid">
+          <div class="card">
+            <div class="card-header">
+              <span class="label">Device</span>
+              <span class="badge badge-idle" id="dashRopBadge">Standby</span>
             </div>
-            <div class="msg" id="patientMsg"></div>
-        </div>
-    </div>
+            <div class="card-title" id="dashPna">--</div>
+            <div class="time-row">
+              <span class="label">Serial</span>
+              <span class="value" id="dashSrn">--</span>
+            </div>
+            <div class="time-row">
+              <span class="label">Motor Hours</span>
+              <span class="value" id="dashMhr">--</span>
+            </div>
+            <div class="btn-group">
+              <button class="btn" onclick="ropCmd('start')" id="btnTherapy" style="font-size:11px;padding:6px 14px">Therapy</button>
+              <button class="btn" onclick="ropCmd('standby')" id="btnStandby" style="font-size:11px;padding:6px 14px">Standby</button>
+              <button class="btn" onclick="ropCmd('energy_save')" id="btnPwrSave" style="font-size:11px;padding:6px 14px">Power Save</button>
+            </div>
+          </div>
 
-    <!-- CLINICAL -->
-    <div class="pane" id="clinical">
+          <div class="card">
+            <div class="card-header">
+              <span class="label">Clock</span>
+            </div>
+            <div class="time-row">
+              <span class="label">AirBridge Time</span>
+              <span class="value" id="dashEspTime">--</span>
+            </div>
+            <div class="time-row">
+              <span class="label">ResMed Time</span>
+              <span class="value" id="dashResmedTime">--</span>
+            </div>
+            <div class="btn-group">
+              <button class="btn" style="font-size:11px;padding:6px 14px" onclick="timeAction('ntp_sync')">Ntp Sync</button>
+              <button class="btn" style="font-size:11px;padding:6px 14px" onclick="timeAction('sync_to_resmed')">Sync to Resmed</button>
+              <button class="btn" style="font-size:11px;padding:6px 14px" onclick="timeAction('sync_from_resmed')">Sync from Resmed</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Oximeter summary card -->
         <div class="card">
-            <h3>Therapy Mode</h3>
-            <div id="modeField"></div>
+          <div class="oxi-header">
+            <div class="oxi-icon">&#9829;</div>
+            <div>
+              <div style="font-weight:600;font-size:15px">Oximetry</div>
+              <div style="font-size:12px;color:var(--text-dim);font-family:monospace;display:none" id="dashOxiAddr"></div>
+            </div>
+            <div class="oxi-badges">
+              <span class="badge badge-idle" id="dashOxiBadge">--</span>
+              <span class="badge badge-idle" id="dashFeedBadge">Feed: --</span>
+            </div>
+          </div>
+          <div class="oxi-values">
+            <div class="oxi-metric">
+              <div class="label">SpO2 Level</div>
+              <div><span class="big" style="color:var(--green)" id="dashSpo2">--</span><span class="unit">%</span></div>
+            </div>
+            <div class="oxi-metric">
+              <div class="label">Pulse Rate</div>
+              <div><span class="big" style="color:var(--cyan)" id="dashPulse">--</span><span class="unit">bpm</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hidden status grid for renderStatus compatibility -->
+        <div id="statusGrid" class="status-grid" style="display:none"></div>
+        <div class="spinner" id="statusSpinner"></div>
+
+        <!-- Telemetry -->
+        <div class="telemetry-header">
+          <h3>Live Telemetry</h3>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="color:var(--text-dim);font-size:13px" id="liveStatus">Stopped</span>
+            <button class="btn" id="btnLive" onclick="toggleLive()" style="padding:6px 16px">Start</button>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="label">Mask Pressure</span>
+            <div><span class="value" style="color:var(--cyan)" id="chartPressVal">--</span><span class="unit"> cmH2O</span></div>
+          </div>
+          <canvas id="cPress" height="140"></canvas>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-header">
+            <span class="label">Flow Rate</span>
+            <div><span class="value" style="color:var(--blue)" id="chartFlowVal">--</span><span class="unit"> L/min</span></div>
+          </div>
+          <canvas id="cFlow" height="140"></canvas>
+        </div>
+
+        <div class="chart-row-2">
+          <div class="chart-card">
+            <div class="chart-header">
+              <span class="label">SpO2</span>
+              <div><span class="value" style="color:var(--green)" id="chartSpo2Val">--</span><span class="unit"> %</span></div>
+            </div>
+            <canvas id="cSpo2" height="100"></canvas>
+          </div>
+          <div class="chart-card">
+            <div class="chart-header">
+              <span class="label">Pulse Rate</span>
+              <div><span class="value" style="color:var(--red)" id="chartPulseVal">--</span><span class="unit"> bpm</span></div>
+            </div>
+            <canvas id="cPulse" height="100"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLEEP REPORT -->
+      <div class="pane" id="p-report">
+        <div class="card">
+          <h3>Last Session</h3>
+          <div class="spinner" id="reportSpinner"></div>
+          <div id="sessionGrid" class="status-grid"></div>
         </div>
         <div class="card">
-            <h3>Mode Settings</h3>
-            <div class="spinner" id="clinicalSpinner"></div>
-            <div id="modeFields"></div>
+          <h3>Summary</h3>
+          <div id="summaryGrid" class="status-grid"></div>
         </div>
+        <div class="btn-row"><button class="btn btn-accent" onclick="loadReport()">Refresh</button></div>
+      </div>
+
+      <!-- PATIENT -->
+      <div class="pane" id="p-patient">
         <div class="card">
-            <h3>Comfort</h3>
-            <div id="comfortFields"></div>
-            <div id="clinicalFields"></div>
+          <h3>Patient Settings</h3>
+          <div class="spinner" id="patientSpinner"></div>
+          <div id="patientFields"></div>
+          <div class="btn-row"><button class="btn btn-accent" onclick="saveSettings('patient')">Save</button></div>
+          <div class="msg" id="patientMsg"></div>
         </div>
-        <div class="card">
-            <h3>Alarms</h3>
-            <div id="alarmFields"></div>
-        </div>
-        <div class="btn-row">
-            <button class="btn" onclick="saveSettings('clinical')">Save All</button>
-        </div>
+      </div>
+
+      <!-- CLINICAL -->
+      <div class="pane" id="p-clinical">
+        <div class="card"><h3>Therapy Mode</h3><div id="modeField"></div></div>
+        <div class="card"><h3>Mode Settings</h3><div class="spinner" id="clinicalSpinner"></div><div id="modeFields"></div></div>
+        <div class="card"><h3>Comfort</h3><div id="comfortFields"></div><div id="clinicalFields"></div></div>
+        <div class="card"><h3>Alarms</h3><div id="alarmFields"></div></div>
+        <div class="btn-row"><button class="btn btn-accent" onclick="saveSettings('clinical')">Save All</button></div>
         <div class="msg" id="clinicalMsg"></div>
-    </div>
+      </div>
 
-    <!-- CLIMATE -->
-    <div class="pane" id="climate">
+      <!-- CLIMATE -->
+      <div class="pane" id="p-climate">
         <div class="card">
-            <h3>Climate Control</h3>
-            <div class="spinner" id="climateSpinner"></div>
-            <div id="climateFields"></div>
-            <div class="btn-row">
-                <button class="btn" onclick="saveSettings('climate')">Save</button>
-            </div>
-            <div class="msg" id="climateMsg"></div>
+          <h3>Climate Control</h3>
+          <div class="spinner" id="climateSpinner"></div>
+          <div id="climateFields"></div>
+          <div class="btn-row"><button class="btn btn-accent" onclick="saveSettings('climate')">Save</button></div>
+          <div class="msg" id="climateMsg"></div>
         </div>
-    </div>
+      </div>
 
-    <!-- BLUETOOTH -->
-    <div class="pane" id="bluetooth">
+      <!-- BLUETOOTH / OXIMETRY -->
+      <div class="pane" id="p-bluetooth">
         <div class="card">
-            <h3>Oximeter Status</h3>
-            <div class="status-grid" id="bleStatusGrid"></div>
-            <div class="btn-row" style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="btn" id="btnFeed" onclick="bleAction('start_feed')">Start Feed</button>
-                <button class="btn" onclick="bleAction('disconnect')" style="background:#c73a52">Disconnect</button>
-                <button class="btn" onclick="loadBle()">Refresh</button>
-            </div>
+          <h3>Oximeter Status</h3>
+          <div class="status-grid" id="bleStatusGrid"></div>
+          <div class="btn-group" style="justify-content:flex-end">
+            <button class="btn btn-accent" id="btnFeed" onclick="bleAction('start_feed')">Start Feed</button>
+            <button class="btn btn-danger" onclick="bleAction('disconnect')">Disconnect</button>
+            <button class="btn" onclick="loadBle()">Refresh</button>
+          </div>
         </div>
         <div class="card">
-            <h3>Scan for Devices</h3>
-            <div class="btn-row" style="text-align:left;margin-bottom:12px">
-                <button class="btn" id="btnScan" onclick="bleScan()">Start Scan</button>
-                <span class="spinner" id="bleScanSpinner" style="display:none;vertical-align:middle;margin-left:8px"></span>
-            </div>
-            <div id="bleDevices"></div>
-            <div class="msg" id="bleMsg"></div>
+          <h3>Scan for Devices</h3>
+          <div style="margin-bottom:12px">
+            <button class="btn btn-accent" id="btnScan" onclick="bleScan()">Start Scan</button>
+            <span class="spinner" id="bleScanSpinner" style="display:none;vertical-align:middle;margin-left:8px"></span>
+          </div>
+          <div id="bleDevices"></div>
+          <div class="msg" id="bleMsg"></div>
         </div>
         <div class="card">
-            <h3>Bonded Devices</h3>
-            <div id="bleBonds"></div>
-            <div class="btn-row">
-                <button class="btn" onclick="bleAction('delete_all_bonds')" style="background:#c73a52">Delete All Bonds</button>
-            </div>
+          <h3>Bonded Devices</h3>
+          <div id="bleBonds"></div>
+          <div class="btn-row"><button class="btn btn-danger" onclick="bleAction('delete_all_bonds')">Delete All Bonds</button></div>
         </div>
-    </div>
+      </div>
 
-    <!-- CONSOLE -->
-    <div class="pane" id="console">
+      <!-- CONSOLE -->
+      <div class="pane" id="p-console">
         <div class="card">
-            <h3>Command Console</h3>
-            <div id="cmdOutput" style="background:#0a0a1a;border:1px solid #0f3460;border-radius:4px;padding:8px;font-family:monospace;font-size:13px;color:#4ade80;height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:8px"></div>
-            <div style="display:flex;gap:8px">
-                <input type="text" id="cmdInput" style="flex:1;width:auto;font-family:monospace" placeholder="Enter command ($ prefix for internal, bare for AirSense)" onkeydown="if(event.key==='Enter')sendCmd()">
-                <button class="btn" onclick="sendCmd()">Send</button>
-            </div>
-            <div style="font-size:12px;color:#666;margin-top:6px">$STATUS, $CONFIG GET key, $BLE SCAN, G S #BID, P S #ROP 0001</div>
+          <h3>Command Console</h3>
+          <div id="cmdOutput" style="background:#08081a;border:1px solid var(--border);border-radius:6px;padding:12px;font-family:monospace;font-size:13px;color:var(--green);height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:8px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="cmdInput" style="flex:1;width:auto;font-family:monospace;border-radius:6px" placeholder="Enter command..." onkeydown="if(event.key==='Enter')sendCmd()">
+            <button class="btn btn-accent" onclick="sendCmd()">Send</button>
+          </div>
+          <div style="font-size:12px;color:#555;margin-top:6px">$STATUS, $CONFIG GET key, $OXI SCAN, G S #BID, P S #ROP 0001</div>
         </div>
-    </div>
+      </div>
 
-    <!-- DEVICE CONFIG -->
-    <div class="pane" id="device">
+      <!-- DEVICE CONFIG -->
+      <div class="pane" id="p-device">
         <div class="card">
-            <h3>Device Configuration</h3>
-            <div class="spinner" id="configSpinner"></div>
-            <div id="configFields"></div>
-            <div class="btn-row">
-                <button class="btn" onclick="saveConfig()">Save & Persist</button>
-            </div>
-            <div class="msg" id="configMsg"></div>
+          <h3>Device Configuration</h3>
+          <div class="spinner" id="configSpinner"></div>
+          <div id="configFields"></div>
+          <div class="btn-row"><button class="btn btn-accent" onclick="saveConfig()">Save & Persist</button></div>
+          <div class="msg" id="configMsg"></div>
         </div>
-    </div>
+      </div>
 
-    <!-- OTA UPLOAD -->
-    <div class="pane" id="ota">
+      <!-- OTA UPLOAD -->
+      <div class="pane" id="p-ota">
         <div class="card">
-            <h3>ResMed Firmware Upload</h3>
-            <div class="upload-area" id="dropZone">
-                <p>Drag &amp; drop firmware file here, or click to browse</p>
-                <input type="file" id="fileInput" style="display:none" accept=".bin,.img,.dat">
-            </div>
-            <div class="progress" id="uploadProgress">
-                <div class="bar" id="uploadBar"></div>
-            </div>
-            <div class="msg" id="uploadMsg"></div>
-            <div id="fileInfo" style="font-size:13px;color:#888;margin-top:8px"></div>
-            <div id="fwWarnings" style="margin-top:8px"></div>
+          <h3>ResMed Firmware Upload</h3>
+          <div class="upload-area" id="dropZone">
+            <p>Drag & drop firmware file here, or click to browse</p>
+            <input type="file" id="fileInput" style="display:none" accept=".bin,.img,.dat">
+          </div>
+          <div class="progress" id="uploadProgress"><div class="bar" id="uploadBar"></div></div>
+          <div class="msg" id="uploadMsg"></div>
+          <div id="fileInfo" style="font-size:13px;color:var(--text-dim);margin-top:8px"></div>
+          <div id="fwWarnings" style="margin-top:8px"></div>
         </div>
         <div class="card" id="flashCard" style="display:none">
-            <h3>Flash to Device</h3>
-            <div class="row">
-                <label>Block type</label>
-                <select id="flashBlock">
-                    <option value="">Auto-detect</option>
-                    <option value="FULL">Full image (CCX+CDX, skip BLX)</option>
-                    <option value="CMX">CMX (Config+Firmware)</option>
-                    <option value="CDX">CDX (Firmware only)</option>
-                    <option value="CCX">CCX (Config only)</option>
-                    <option value="BLX">BLX (Bootloader)</option>
-                </select>
-            </div>
-            <div class="row" id="blxFlashRow" style="display:none">
-                <label>Include bootloader (BLX)</label>
-                <input type="checkbox" id="flashBlx">
-            </div>
-            <div class="row" id="blxForceRow" style="display:none">
-                <label style="color:#f87171">Force BLX even if BID mismatches</label>
-                <input type="checkbox" id="forceBlx">
-            </div>
-            <div id="flashDetected" style="font-size:13px;color:#888;padding:8px 0"></div>
-            <div class="btn-row" style="display:flex;gap:8px;justify-content:flex-end">
-                <button class="btn" id="btnFlash" onclick="startFlash()">Flash</button>
-                <button class="btn" id="btnFlashCancel" onclick="cancelFlash()" style="background:#c73a52;display:none">Cancel</button>
-            </div>
-            <div class="progress" id="flashProgress" style="display:none">
-                <div class="bar" id="flashBar"></div>
-            </div>
-            <div id="flashPhase" style="font-size:13px;color:#888;margin-top:4px"></div>
-            <div class="msg" id="flashMsg"></div>
+          <h3>Flash to Device</h3>
+          <div class="row">
+            <label>Block type</label>
+            <select id="flashBlock">
+              <option value="">Auto-detect</option>
+              <option value="FULL">Full image (CCX+CDX, skip BLX)</option>
+              <option value="CMX">CMX (Config+Firmware)</option>
+              <option value="CDX">CDX (Firmware only)</option>
+              <option value="CCX">CCX (Config only)</option>
+              <option value="BLX">BLX (Bootloader)</option>
+            </select>
+          </div>
+          <div class="row" id="blxFlashRow" style="display:none">
+            <label>Include bootloader (BLX)</label>
+            <input type="checkbox" id="flashBlx">
+          </div>
+          <div class="row" id="blxForceRow" style="display:none">
+            <label style="color:var(--red)">Force BLX even if BID mismatches</label>
+            <input type="checkbox" id="forceBlx">
+          </div>
+          <div id="flashDetected" style="font-size:13px;color:var(--text-dim);padding:8px 0"></div>
+          <div class="btn-group" style="justify-content:flex-end">
+            <button class="btn btn-accent" id="btnFlash" onclick="startFlash()">Flash</button>
+            <button class="btn btn-danger" id="btnFlashCancel" onclick="cancelFlash()" style="display:none">Cancel</button>
+          </div>
+          <div class="progress" id="flashProgress" style="display:none"><div class="bar" id="flashBar"></div></div>
+          <div id="flashPhase" style="font-size:13px;color:var(--text-dim);margin-top:4px"></div>
+          <div class="msg" id="flashMsg"></div>
         </div>
+      </div>
+
     </div>
+  </div>
+</div>
+
+<!-- Mobile bottom nav -->
+<nav class="bottom-nav">
+  <a class="bnav-item active" data-tab="status"><span class="icon">&#9878;</span>Home</a>
+  <a class="bnav-item" data-tab="report"><span class="icon">&#9776;</span>Report</a>
+  <a class="bnav-item" data-tab="bluetooth"><span class="icon">&#9829;</span>Oxi</a>
+  <a class="bnav-item" data-tab="console"><span class="icon">&#9002;</span>CLI</a>
+  <a class="bnav-item" data-tab="device"><span class="icon">&#9881;</span>Config</a>
+</nav>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
 
 <script>
 const G = {};
-let settings = [],
-  curMode = 0;
+let settings = [], curMode = 0;
 
-// SSE: auto-update from server push
+// SSE
 let evtSrc = null;
-
 function initSSE() {
   if (evtSrc) evtSrc.close();
   evtSrc = new EventSource('/events');
   evtSrc.addEventListener('status', e => {
-    try {
-      const d = JSON.parse(e.data);
-      updateStatusFromPush(d);
-    } catch (ex) {}
+    try { updateStatusFromPush(JSON.parse(e.data)); } catch(ex) {}
   });
   evtSrc.addEventListener('live', e => {
-    try {
-      const d = JSON.parse(e.data);
-      updateChartsFromPush(d);
-    } catch (ex) {}
+    try { updateChartsFromPush(JSON.parse(e.data)); } catch(ex) {}
   });
   evtSrc.addEventListener('flash', e => {
-    try {
-      const d = JSON.parse(e.data);
-      updateFlashFromPush(d);
-    } catch (ex) {}
+    try { updateFlashFromPush(JSON.parse(e.data)); } catch(ex) {}
   });
   evtSrc.onerror = () => {
+    var li = document.getElementById('liveIndicator');
+    if (li) li.style.background = '#555';
     setTimeout(initSSE, 3000);
   };
+  evtSrc.onopen = () => {
+    var li = document.getElementById('liveIndicator');
+    if (li) li.style.background = '';
+  };
 }
-let lastStatus = {};
 
+let lastStatus = {};
 function updateStatusFromPush(d) {
   Object.assign(lastStatus, d);
   renderStatus(lastStatus);
@@ -470,11 +501,43 @@ function updateStatusFromPush(d) {
 
 var lastBleState = '';
 function updateBleFromPush(d) {
-  var pane = document.getElementById('bluetooth');
+  // Update dashboard oxi card from any push
+  var st = d.oxi || d.state;
+  if (st) {
+    var b = document.getElementById('dashOxiBadge');
+    if (b) {
+      b.textContent = st;
+      b.className = 'badge ' + (st === 'STREAMING' ? 'badge-streaming' : st === 'DISCONNECTED' ? 'badge-idle' : 'badge-idle');
+    }
+  }
+  if (d.oxi_addr !== undefined) {
+    var oa = document.getElementById('dashOxiAddr');
+    if (oa) {
+      if (d.oxi_addr) { oa.textContent = d.oxi_addr; oa.style.display = ''; }
+      else { oa.style.display = 'none'; }
+    }
+  }
+  if (d.feeding !== undefined) {
+    var fb = document.getElementById('dashFeedBadge');
+    if (fb) {
+      fb.textContent = 'Feed: ' + d.feeding;
+      fb.className = 'badge ' + (d.feeding === 'yes' ? 'badge-feed' : 'badge-idle');
+    }
+  }
+  if (d.spo2 !== undefined) {
+    var s = document.getElementById('dashSpo2');
+    if (s) s.textContent = d.spo2 >= 0 ? d.spo2 : '--';
+  }
+  if (d.pulse !== undefined) {
+    var p = document.getElementById('dashPulse');
+    if (p) p.textContent = d.pulse >= 0 ? d.pulse : '--';
+  }
+
+  // BLE tab updates
+  var pane = document.getElementById('p-bluetooth');
   if (!pane || !pane.classList.contains('active')) return;
   var g = document.getElementById('bleStatusGrid');
   if (!g || !g.children.length) { loadBle(); return; }
-  var st = d.oxi || d.state;
   var fields = {
     state: st, feeding: d.feeding,
     spo2: d.spo2 >= 0 ? d.spo2 + '%' : '--',
@@ -486,7 +549,6 @@ function updateBleFromPush(d) {
   }
   var sp = document.getElementById('bleScanSpinner');
   if (sp) sp.style.display = st === 'SCANNING' ? 'inline-block' : 'none';
-  // Refresh device list when scan completes
   if (lastBleState === 'SCANNING' && st !== 'SCANNING') loadBle();
   if (pendingConnect) {
     var msgEl = document.getElementById('bleMsg');
@@ -499,7 +561,6 @@ function updateBleFromPush(d) {
       showMsg(msgEl, 'Connection failed', 'err');
       loadBle();
     } else if (st === 'DISCONNECTED' && lastBleState !== 'CONNECTING' && lastBleState !== 'BONDING') {
-      // Only treat as failure if we weren't mid-retry
       pendingConnect = false;
       showMsg(msgEl, 'Connection failed', 'err');
       loadBle();
@@ -518,12 +579,8 @@ function updateFlashFromPush(d) {
       bar.style.width = (d.sent / d.total * 100) + '%';
       prog.style.display = 'block';
     }
-    if (!d.active && d.error) {
-      showMsg(document.getElementById('flashMsg'), d.error, 'err');
-    }
-    if (!d.active && !d.error) {
-      showMsg(document.getElementById('flashMsg'), 'Flash complete', 'ok');
-    }
+    if (!d.active && d.error) showMsg(document.getElementById('flashMsg'), d.error, 'err');
+    if (!d.active && !d.error) showMsg(document.getElementById('flashMsg'), 'Flash complete', 'ok');
   }
 }
 
@@ -531,15 +588,16 @@ function updateChartsFromPush(d) {
   if (typeof addLiveSample === 'function') addLiveSample(d);
 }
 
-const tabNames = ['status', 'report', 'patient', 'clinical', 'climate', 'bluetooth', 'console', 'device', 'ota'];
+// Navigation
+const tabNames = ['status','report','patient','clinical','climate','bluetooth','console','device','ota'];
 
 function showTab(id) {
   tabNames.forEach(t => {
-    const tab = document.querySelector(`.tab[onclick="showTab('${t}')"]`);
-    const pane = document.getElementById(t);
-    if (tab) tab.classList.toggle('active', t === id);
+    const pane = document.getElementById('p-' + t);
     if (pane) pane.classList.toggle('active', t === id);
   });
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.tab === id));
+  document.querySelectorAll('.bnav-item').forEach(n => n.classList.toggle('active', n.dataset.tab === id));
   window.location.hash = id;
   if (id === 'status') {
     loadStatus();
@@ -547,7 +605,7 @@ function showTab(id) {
       var scheduleNext = function() {
         var ms = 60000 - (Date.now() % 60000) + 500;
         window._statusTimer = setTimeout(function tick() {
-          if (document.getElementById('status').classList.contains('active')) loadStatus();
+          if (document.getElementById('p-status').classList.contains('active')) loadStatus();
           window._statusTimer = setTimeout(tick, 60000 - (Date.now() % 60000) + 500);
         }, ms);
       };
@@ -555,63 +613,97 @@ function showTab(id) {
     }
   }
   if (id === 'report') loadReport();
-  if (['patient', 'clinical', 'climate'].includes(id) && !settings.length) loadSettings();
+  if (['patient','clinical','climate'].includes(id) && !settings.length) loadSettings();
   if (id === 'bluetooth') loadBle();
   if (id === 'console') document.getElementById('cmdInput').focus();
   if (id === 'device' && !document.getElementById('configFields').children.length) loadConfig();
   if (id === 'ota') checkFlashReady();
 }
 
+// Wire up nav clicks
+document.querySelectorAll('.nav-item, .bnav-item').forEach(n => {
+  n.addEventListener('click', () => showTab(n.dataset.tab));
+});
+
 async function api(url, opts) {
   const r = await fetch(url, opts);
-  if (r.status === 401) {
-    alert('Authentication failed');
-    return null;
-  }
+  if (r.status === 401) { alert('Authentication failed'); return null; }
   return r;
 }
 
-const ROP_NAMES = {
-  0: 'Standby',
-  1: 'Normal',
-  2: 'Power Recovery',
-  3: 'Power Save',
-  4: 'Calibration',
-  5: 'Upgrade'
-};
+const ROP_NAMES = {0:'Standby',1:'Normal',2:'Power Recovery',3:'Power Save',4:'Calibration',5:'Upgrade'};
 
 function renderStatus(d) {
-  const g = document.getElementById('statusGrid');
-  if (!g || !d.version) return;
-  g.innerHTML = '';
-  const rop = ROP_NAMES[d.rop] || ('Unknown (' + d.rop + ')');
-  const spo2 = d.spo2 >= 0 ? d.spo2 + '%' : '--';
-  const pulse = d.pulse >= 0 ? d.pulse + ' bpm' : '--';
-  const rows = [
-    ['Time', d.esp_time || '--', 'ResMed Time', d.resmed_time || '--'],
-    ['Version', d.version, 'Built', d.built],
-    ['System', d.system, 'Device State', rop],
-    ['Product', d.pna || '--', 'Serial', d.srn || '--'],
-    ['Oximeter', d.oxi || '--', 'Feeding', d.feeding || '--'],
-    ['SpO2', spo2, 'Pulse', pulse],
-  ];
-  rows.forEach(([k1, v1, k2, v2]) => {
-    let html = `<div class="stat">
-<span class="k">${k1}:</span> <span class="v">${v1}</span>
-</div>`;
-    if (k2) html += `<div class="stat">
-<span class="k">${k2}:</span> <span class="v">${v2}</span>
-</div>`;
-    g.innerHTML += html;
+  // Topbar - update from any push, even without full status
+  var el;
+  el = document.getElementById('topHeap'); if (el && d.heap) el.textContent = (d.heap/1024).toFixed(1) + ' KB free';
+  el = document.getElementById('topWifi'); if (el && d.rssi !== undefined) el.textContent = 'WiFi: ' + d.rssi + ' dBm';
+  if (d.uptime !== undefined) {
+    var s = d.uptime, days = (s/86400)|0, hrs = ((s%86400)/3600)|0, mins = ((s%3600)/60)|0;
+    var ut = '';
+    if (days) ut += days + 'd ';
+    ut += hrs + 'h ' + mins + 'm';
+    el = document.getElementById('topUptime'); if (el) el.textContent = 'Up: ' + ut;
+  }
+  if (d.version) {
+    document.getElementById('ver').textContent = d.version;
+    var vb = document.getElementById('verBuild');
+    if (vb && d.built) vb.textContent = d.built;
+  }
+
+  if (!d.version && !d.pna) return;  // SSE-only push, no full status data
+
+  // Dashboard cards
+  var pna = d.pna || '--';
+  pna = pna.replace(/_/g, ' ');
+  var el;
+  el = document.getElementById('dashPna'); if (el) el.textContent = pna;
+  el = document.getElementById('dashSrn'); if (el) el.textContent = d.srn || '--';
+  el = document.getElementById('dashMhr');
+  if (el && d.mhr !== undefined && d.mhr >= 0) {
+    var h = Math.round(d.mhr / 3600);
+    el.textContent = h.toLocaleString() + ' hrs';
+  }
+  // Infer rop from system state if not in payload (SSE push)
+  if (d.rop === undefined && d.system) {
+    d.rop = d.system === 'THERAPY' ? 1 : d.system === 'ERROR' ? -1 : 0;
+  }
+  var rop = ROP_NAMES[d.rop] || (d.system || '--');
+  var ropBadge = document.getElementById('dashRopBadge');
+  if (ropBadge) {
+    ropBadge.textContent = rop;
+    ropBadge.className = 'badge ' + (d.rop === 1 ? 'badge-therapy' : d.system === 'ERROR' ? 'badge-error' : 'badge-idle');
+  }
+  el = document.getElementById('dashEspTime'); if (el) el.textContent = d.esp_time || '--';
+  el = document.getElementById('dashResmedTime'); if (el) el.textContent = d.resmed_time || '--';
+
+  // Oxi summary
+  el = document.getElementById('dashSpo2'); if (el) el.textContent = d.spo2 >= 0 ? d.spo2 : '--';
+  el = document.getElementById('dashPulse'); if (el) el.textContent = d.pulse >= 0 ? d.pulse : '--';
+
+  // Highlight active ROP button
+  var ropBtns = {1:'btnTherapy', 0:'btnStandby', 3:'btnPwrSave'};
+  ['btnTherapy','btnStandby','btnPwrSave'].forEach(function(id) {
+    var b = document.getElementById(id);
+    if (b) b.className = (ropBtns[d.rop] === id) ? 'btn btn-accent' : 'btn';
   });
-  if (d.version) document.getElementById('ver').textContent = d.version;
-  const tb = document.getElementById('btnTherapy');
-  if (d.rop === 1) {
-    tb.textContent = 'Stop Therapy';
-    tb.onclick = () => ropCmd('standby');
-  } else {
-    tb.textContent = 'Start Therapy';
-    tb.onclick = () => ropCmd('start');
+
+  // Keep hidden statusGrid for any code that references it
+  const g = document.getElementById('statusGrid');
+  if (g) {
+    g.innerHTML = '';
+    const rows = [
+      ['Time', d.esp_time || '--', 'ResMed Time', d.resmed_time || '--'],
+      ['Version', d.version, 'Built', d.built],
+      ['System', d.system, 'Device State', rop],
+      ['Product', d.pna || '--', 'Serial', d.srn || '--'],
+      ['Oximeter', d.oxi || '--', 'Feeding', d.feeding || '--'],
+      ['SpO2', d.spo2 >= 0 ? d.spo2 + '%' : '--', 'Pulse', d.pulse >= 0 ? d.pulse + ' bpm' : '--'],
+    ];
+    rows.forEach(([k1,v1,k2,v2]) => {
+      g.innerHTML += '<div class="stat"><span class="k">'+k1+':</span> <span class="v">'+v1+'</span></div>';
+      if (k2) g.innerHTML += '<div class="stat"><span class="k">'+k2+':</span> <span class="v">'+v2+'</span></div>';
+    });
   }
 }
 
@@ -621,33 +713,25 @@ async function loadStatus() {
     if (!r) return;
     lastStatus = await r.json();
     renderStatus(lastStatus);
-  } catch (e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 async function ropCmd(action) {
-  const cmds = {
-    start: 'P S #ROP 0001',
-    standby: 'P S #ROP 0000',
-    energy_save: 'P S #ROP 0003'
-  };
+  const cmds = {start:'P S #ROP 0001',standby:'P S #ROP 0000',energy_save:'P S #ROP 0003'};
   try {
-    const r = await api('/api/cmd', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        cmd: cmds[action]
-      })
-    });
-    if (r) {
-      setTimeout(loadStatus, 1000);
-    }
-  } catch (e) {
-    console.error(e);
-  }
+    const r = await api('/api/cmd', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd:cmds[action]})});
+    if (r) setTimeout(loadStatus, 1000);
+  } catch(e) { console.error(e); }
+}
+
+async function timeAction(action) {
+  try {
+    const r = await api('/api/time', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    if (!r) return;
+    const d = await r.json();
+    showMsg(null, d.result, d.ok === 'true' ? 'ok' : 'err');
+    setTimeout(loadStatus, 1000);
+  } catch(e) { showMsg(null, 'Error: ' + e.message, 'err'); }
 }
 
 async function loadReport() {
@@ -657,68 +741,45 @@ async function loadReport() {
     const r = await api('/api/report');
     if (!r) return;
     const data = await r.json();
-    const sg = document.getElementById('sessionGrid');
-    sg.innerHTML = '';
-    const ug = document.getElementById('summaryGrid');
-    ug.innerHTML = '';
+    const sg = document.getElementById('sessionGrid'); sg.innerHTML = '';
+    const ug = document.getElementById('summaryGrid'); ug.innerHTML = '';
     data.forEach(v => {
       if (v.raw < 0) return;
       const target = v.section === 'summary' ? ug : sg;
-      target.innerHTML += `<div class="stat">
-<span class="k">${v.label}:</span> <span class="v">${v.value} ${v.unit}</span>
-</div>`;
+      target.innerHTML += '<div class="stat"><span class="k">'+v.label+':</span> <span class="v">'+v.value+' '+v.unit+'</span></div>';
     });
-    if (!sg.children.length) sg.innerHTML = '<div class="stat">
-<span class="k">No session data</span>
-</div>';
-    if (!ug.children.length) ug.innerHTML = '<div class="stat">
-<span class="k">No summary data</span>
-</div>';
-  } catch (e) {
-    console.error(e);
-  }
+    if (!sg.children.length) sg.innerHTML = '<div class="stat"><span class="k">No session data</span></div>';
+    if (!ug.children.length) ug.innerHTML = '<div class="stat"><span class="k">No summary data</span></div>';
+  } catch(e) { console.error(e); }
   if (sp) sp.style.display = 'none';
 }
 
 function renderField(s) {
   const div = document.createElement('div');
   div.className = 'row';
-  div.innerHTML = `<label>${s.label}</label>`;
+  div.innerHTML = '<label>'+s.label+'</label>';
   if (s.type === 'enum' && s.options) {
-    let sel = `<select data-cmd="${s.cmd}">`;
-    s.options.forEach((o, i) => sel += `<option value="${i}"${i==s.value?' selected':''}>${o}</option>`);
-    sel += `</select>`;
+    let sel = '<select data-cmd="'+s.cmd+'">';
+    s.options.forEach((o,i) => sel += '<option value="'+i+'"'+(i==s.value?' selected':'')+'>'+o+'</option>');
+    sel += '</select>';
     div.innerHTML += sel;
   } else {
-    div.innerHTML += `<input type="number" data-cmd="${s.cmd}" value="${s.display||s.value}" step="${s.step||1}">`;
+    div.innerHTML += '<input type="number" data-cmd="'+s.cmd+'" value="'+(s.display||s.value)+'" step="'+(s.step||1)+'">';
   }
   return div;
 }
 
 async function loadSettings() {
-  ['patientSpinner', 'clinicalSpinner', 'climateSpinner'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'block';
+  ['patientSpinner','clinicalSpinner','climateSpinner'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'block';
   });
   try {
     const r = await api('/api/settings');
     if (!r) return;
     settings = await r.json();
-    const containers = {
-      patient: 'patientFields',
-      clinical: 'clinicalFields',
-      comfort: 'comfortFields',
-      mode: 'modeFields',
-      climate: 'climateFields',
-      alarm: 'alarmFields',
-      system: 'systemFields'
-    };
-    for (const c in containers) {
-      const el = document.getElementById(containers[c]);
-      if (el) el.innerHTML = '';
-    }
-    const mf = document.getElementById('modeField');
-    if (mf) mf.innerHTML = '';
+    const containers = {patient:'patientFields',clinical:'clinicalFields',comfort:'comfortFields',mode:'modeFields',climate:'climateFields',alarm:'alarmFields',system:'systemFields'};
+    for (const c in containers) { const el = document.getElementById(containers[c]); if (el) el.innerHTML = ''; }
+    const mf = document.getElementById('modeField'); if (mf) mf.innerHTML = '';
     settings.forEach(s => {
       const target = s.cmd === 'MOP' ? 'modeField' : (containers[s.group] || 'clinicalFields');
       const el = document.getElementById(target);
@@ -727,17 +788,8 @@ async function loadSettings() {
         el.appendChild(field);
         if (s.cmd === 'MOP') {
           field.querySelector('select').addEventListener('change', async e => {
-            const newMode = parseInt(e.target.value);
-            // Write mode change to device first, then re-poll all settings
-            await api('/api/cmd', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                cmd: 'P S #MOP ' + newMode.toString(16).toUpperCase().padStart(4, '0')
-              })
-            });
+            await api('/api/cmd', {method:'POST',headers:{'Content-Type':'application/json'},
+              body:JSON.stringify({cmd:'P S #MOP ' + parseInt(e.target.value).toString(16).toUpperCase().padStart(4,'0')})});
             setTimeout(loadSettings, 500);
           });
           curMode = parseInt(s.value) || 0;
@@ -745,379 +797,181 @@ async function loadSettings() {
       }
     });
     updateModeVisibility();
-  } catch (e) {
-    console.error(e);
-  }
-  ['patientSpinner', 'clinicalSpinner', 'climateSpinner'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = 'none';
+  } catch(e) { console.error(e); }
+  ['patientSpinner','clinicalSpinner','climateSpinner'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = 'none';
   });
 }
 
-function updateModeVisibility() {
-  // No-op: server returns only visible variables for current mode
-}
+function updateModeVisibility() {}
 
 async function saveSettings(group) {
   const changes = {};
-  const groups = group === 'clinical' ? ['clinical', 'comfort', 'mode', 'alarm'] : [group];
+  const groups = group === 'clinical' ? ['clinical','comfort','mode','alarm'] : [group];
   groups.forEach(g => {
-    const containers = {
-      patient: 'patientFields',
-      clinical: 'clinicalFields',
-      comfort: 'comfortFields',
-      mode: 'modeFields',
-      climate: 'climateFields',
-      alarm: 'alarmFields',
-      system: 'systemFields'
-    };
-    const el = document.getElementById(containers[g]);
-    if (!el) return;
+    const containers = {patient:'patientFields',clinical:'clinicalFields',comfort:'comfortFields',mode:'modeFields',climate:'climateFields',alarm:'alarmFields',system:'systemFields'};
+    const el = document.getElementById(containers[g]); if (!el) return;
     el.querySelectorAll('[data-cmd]').forEach(inp => {
       if (inp.closest('.row').style.display === 'none') return;
-      const s = settings.find(x => x.cmd === inp.dataset.cmd);
-      if (!s) return;
+      const s = settings.find(x => x.cmd === inp.dataset.cmd); if (!s) return;
       const newVal = inp.value;
-      if (s.type === 'enum') {
-        if (parseInt(newVal) !== parseInt(s.value)) changes[s.cmd] = newVal;
-      } else if (s.scale_div && s.scale_div > 1) {
-        const raw = Math.round(parseFloat(newVal) * s.scale_div);
-        if (raw !== parseInt(s.value)) changes[s.cmd] = String(raw);
-      } else {
-        if (newVal !== String(s.value)) changes[s.cmd] = newVal;
-      }
+      if (s.type === 'enum') { if (parseInt(newVal) !== parseInt(s.value)) changes[s.cmd] = newVal; }
+      else if (s.scale_div && s.scale_div > 1) { const raw = Math.round(parseFloat(newVal) * s.scale_div); if (raw !== parseInt(s.value)) changes[s.cmd] = String(raw); }
+      else { if (newVal !== String(s.value)) changes[s.cmd] = newVal; }
     });
   });
-  // Also include MOP if saving clinical
   if (group === 'clinical') {
     const mopSel = document.querySelector('#modeField [data-cmd="MOP"]');
-    if (mopSel) {
-      const s = settings.find(x => x.cmd === 'MOP');
-      if (s && parseInt(mopSel.value) !== parseInt(s.value)) changes['MOP'] = mopSel.value;
-    }
+    if (mopSel) { const s = settings.find(x => x.cmd === 'MOP'); if (s && parseInt(mopSel.value) !== parseInt(s.value)) changes['MOP'] = mopSel.value; }
   }
   const msgEl = document.getElementById(group + 'Msg');
-  if (!Object.keys(changes).length) {
-    showMsg(msgEl, 'No changes', 'ok');
-    return;
-  }
+  if (!Object.keys(changes).length) { showMsg(msgEl, 'No changes', 'ok'); return; }
   try {
-    const r = await api('/api/settings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(changes)
-    });
+    const r = await api('/api/settings', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)});
     if (!r) return;
     const d = await r.json();
     if (d.errors && d.errors.length) showMsg(msgEl, 'Errors: ' + d.errors.join(', '), 'err');
-    else {
-      showMsg(msgEl, 'Saved ' + Object.keys(changes).length + ' settings', 'ok');
-      loadSettings();
-    }
-  } catch (e) {
-    showMsg(msgEl, 'Error: ' + e.message, 'err');
-  }
+    else { showMsg(msgEl, 'Saved ' + Object.keys(changes).length + ' settings', 'ok'); loadSettings(); }
+  } catch(e) { showMsg(msgEl, 'Error: ' + e.message, 'err'); }
 }
 
-// TZ string generator
-
+// TZ helper
 var TZ_ABBR = {
-  'Europe/London':['GMT','BST'],'Europe/Paris':['CET','CEST'],
-  'Europe/Berlin':['CET','CEST'],'Europe/Warsaw':['CET','CEST'],
-  'Europe/Helsinki':['EET','EEST'],'Europe/Istanbul':['TRT',null],
-  'Europe/Moscow':['MSK',null],'Asia/Tokyo':['JST',null],
-  'Asia/Shanghai':['CST',null],'Asia/Hong_Kong':['HKT',null],
-  'Asia/Singapore':['SGT',null],'Asia/Seoul':['KST',null],
-  'Asia/Kolkata':['IST',null],'Asia/Dubai':['GST',null],
-  'Asia/Jerusalem':['IST','IDT'],'Asia/Bangkok':['ICT',null],
-  'Asia/Karachi':['PKT',null],'Asia/Dhaka':['BST',null],
+  'Europe/London':['GMT','BST'],'Europe/Paris':['CET','CEST'],'Europe/Berlin':['CET','CEST'],
+  'Europe/Warsaw':['CET','CEST'],'Europe/Helsinki':['EET','EEST'],'Europe/Istanbul':['TRT',null],
+  'Europe/Moscow':['MSK',null],'Asia/Tokyo':['JST',null],'Asia/Shanghai':['CST',null],
+  'Asia/Hong_Kong':['HKT',null],'Asia/Singapore':['SGT',null],'Asia/Seoul':['KST',null],
+  'Asia/Kolkata':['IST',null],'Asia/Dubai':['GST',null],'Asia/Jerusalem':['IST','IDT'],
+  'Asia/Bangkok':['ICT',null],'Asia/Karachi':['PKT',null],'Asia/Dhaka':['BST',null],
   'Asia/Kathmandu':['NPT',null],
   'America/New_York':['EST','EDT'],'America/Chicago':['CST','CDT'],
   'America/Denver':['MST','MDT'],'America/Los_Angeles':['PST','PDT'],
   'America/Anchorage':['AKST','AKDT'],'Pacific/Honolulu':['HST',null],
   'America/Toronto':['EST','EDT'],'America/Mexico_City':['CST',null],
-  'America/Sao_Paulo':['BRT',null],
-  'America/Argentina/Buenos_Aires':['ART',null],
-  'Africa/Cairo':['EET',null],'Africa/Lagos':['WAT',null],
-  'Africa/Nairobi':['EAT',null],
-  'Australia/Sydney':['AEST','AEDT'],
-  'Pacific/Auckland':['NZST','NZDT'],'Pacific/Fiji':['FJT','FJST'],
+  'America/Sao_Paulo':['BRT',null],'America/Argentina/Buenos_Aires':['ART',null],
+  'Africa/Cairo':['EET',null],'Africa/Lagos':['WAT',null],'Africa/Nairobi':['EAT',null],
+  'Australia/Sydney':['AEST','AEDT'],'Pacific/Auckland':['NZST','NZDT'],'Pacific/Fiji':['FJT','FJST']
 };
+function tzOff(d,tz){return(new Date(d.toLocaleString('en-US',{timeZone:tz}))-new Date(d.toLocaleString('en-US',{timeZone:'UTC'})))/60000}
+function tzAbbr(d,tz,isDst){var entry=TZ_ABBR[tz];if(entry){var a=isDst?entry[1]:entry[0];if(a)return a}var a=new Intl.DateTimeFormat('en-US',{timeZone:tz,timeZoneName:'short'}).formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value;return/^[A-Za-z]+$/.test(a)?a:'<'+a+'>'}
+function tzFmtOff(o){var h=(-o/60)|0,m=Math.abs(o%60);return h+(m?':'+String(m).padStart(2,'0'):'')}
+function tzFmtTrans(tz,ref,yr){var ro=tzOff(ref,tz),ts=null,te=null;for(var m=0;m<12;m++){var d1=new Date(yr,m,1),d2=new Date(yr,m+1,1);if(tzOff(d1,tz)===ro&&tzOff(d2,tz)!==ro){ts=d1.getTime();te=d2.getTime();break}}if(ts===null)return'J365/25';var lo=ts,hi=te;while(hi-lo>1000){var mid=lo+((hi-lo)/2|0);if(tzOff(new Date(mid),tz)===ro)lo=mid;else hi=mid}var w=new Date(hi+ro*60000);var month=w.getUTCMonth()+1,day=w.getUTCDate(),wd=w.getUTCDay();var h=w.getUTCHours(),min=w.getUTCMinutes(),sec=w.getUTCSeconds();var dim=new Date(Date.UTC(w.getUTCFullYear(),month,0)).getUTCDate();var n=(day+7>dim)?5:Math.ceil(day/7);var s='M'+month+'.'+n+'.'+wd;if(h!==2||min||sec){s+='/'+h;if(min||sec){s+=':'+String(min).padStart(2,'0');if(sec)s+=':'+String(sec).padStart(2,'0')}}return s}
+function getPosixTz(tz){var yr=new Date().getFullYear(),jan=new Date(yr,0,1),jun=new Date(yr,5,1);var jo=tzOff(jan,tz),juo=tzOff(jun,tz);var so=Math.min(jo,juo),dlo=Math.max(jo,juo);var std=so===jo?jan:jun,dlt=dlo===jo?jan:jun;var s=tzAbbr(std,tz,false)+tzFmtOff(so);if(so!==dlo){s+=tzAbbr(dlt,tz,true);if(dlo!==so+60)s+=tzFmtOff(dlo);s+=','+tzFmtTrans(tz,std,yr)+','+tzFmtTrans(tz,dlt,yr)}return s}
 
-function tzOff(d, tz) {
-  return (new Date(d.toLocaleString('en-US',{timeZone:tz})) -
-          new Date(d.toLocaleString('en-US',{timeZone:'UTC'}))) / 60000;
-}
+var TZ_ZONES=['Pacific/Honolulu','America/Anchorage','America/Los_Angeles','America/Denver','America/Chicago','America/New_York','America/Toronto','America/Sao_Paulo','America/Argentina/Buenos_Aires','America/Mexico_City','Europe/London','Europe/Paris','Europe/Berlin','Europe/Warsaw','Europe/Helsinki','Europe/Moscow','Europe/Istanbul','Africa/Cairo','Africa/Lagos','Africa/Nairobi','Asia/Dubai','Asia/Karachi','Asia/Kolkata','Asia/Kathmandu','Asia/Dhaka','Asia/Bangkok','Asia/Shanghai','Asia/Hong_Kong','Asia/Singapore','Asia/Tokyo','Asia/Seoul','Asia/Jerusalem','Australia/Sydney','Pacific/Auckland','Pacific/Fiji'].sort();
 
-function tzAbbr(d, tz, isDst) {
-  var entry = TZ_ABBR[tz];
-  if (entry) { var a = isDst ? entry[1] : entry[0]; if (a) return a; }
-  var a = new Intl.DateTimeFormat('en-US',{timeZone:tz,timeZoneName:'short'})
-    .formatToParts(d).find(function(p){return p.type==='timeZoneName'}).value;
-  return /^[A-Za-z]+$/.test(a) ? a : '<'+a+'>';
-}
-
-function tzFmtOff(o) {
-  var h = (-o/60)|0, m = Math.abs(o%60);
-  return h + (m ? ':'+String(m).padStart(2,'0') : '');
-}
-
-function tzFmtTrans(tz, ref, yr) {
-  var ro = tzOff(ref, tz), ts = null, te = null;
-  for (var m=0; m<12; m++) {
-    var d1=new Date(yr,m,1), d2=new Date(yr,m+1,1);
-    if (tzOff(d1,tz)===ro && tzOff(d2,tz)!==ro) { ts=d1.getTime(); te=d2.getTime(); break; }
-  }
-  if (ts===null) return 'J365/25';
-  var lo=ts, hi=te;
-  while (hi-lo>1000) { var mid=lo+((hi-lo)/2|0); if(tzOff(new Date(mid),tz)===ro) lo=mid; else hi=mid; }
-  var w = new Date(hi + ro * 60000);
-  var month=w.getUTCMonth()+1, day=w.getUTCDate(), wd=w.getUTCDay();
-  var h=w.getUTCHours(), min=w.getUTCMinutes(), sec=w.getUTCSeconds();
-  var dim = new Date(Date.UTC(w.getUTCFullYear(), month, 0)).getUTCDate();
-  var n = (day + 7 > dim) ? 5 : Math.ceil(day / 7);
-  var s = 'M'+month+'.'+n+'.'+wd;
-  if (h!==2||min||sec) {
-    s += '/'+h;
-    if (min||sec) { s+=':'+String(min).padStart(2,'0'); if(sec) s+=':'+String(sec).padStart(2,'0'); }
-  }
-  return s;
-}
-
-function getPosixTz(tz) {
-  var yr=new Date().getFullYear(), jan=new Date(yr,0,1), jun=new Date(yr,5,1);
-  var jo=tzOff(jan,tz), juo=tzOff(jun,tz);
-  var so=Math.min(jo,juo), dlo=Math.max(jo,juo);
-  var std=so===jo?jan:jun, dlt=dlo===jo?jan:jun;
-  var s = tzAbbr(std,tz,false)+tzFmtOff(so);
-  if (so!==dlo) {
-    s += tzAbbr(dlt,tz,true);
-    if (dlo!==so+60) s += tzFmtOff(dlo);
-    s += ','+tzFmtTrans(tz,std,yr)+','+tzFmtTrans(tz,dlt,yr);
-  }
-  return s;
-}
-
-var TZ_ZONES = ['Pacific/Honolulu','America/Anchorage','America/Los_Angeles','America/Denver',
-  'America/Chicago','America/New_York','America/Toronto','America/Sao_Paulo',
-  'America/Argentina/Buenos_Aires','America/Mexico_City','Europe/London','Europe/Paris',
-  'Europe/Berlin','Europe/Warsaw','Europe/Helsinki','Europe/Moscow','Europe/Istanbul',
-  'Africa/Cairo','Africa/Lagos','Africa/Nairobi','Asia/Dubai','Asia/Karachi',
-  'Asia/Kolkata','Asia/Kathmandu','Asia/Dhaka','Asia/Bangkok','Asia/Shanghai',
-  'Asia/Hong_Kong','Asia/Singapore','Asia/Tokyo','Asia/Seoul','Asia/Jerusalem',
-  'Australia/Sydney','Pacific/Auckland','Pacific/Fiji'].sort();
-
-function attachTzHelper(inp) {
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap';
-  inp.parentNode.insertBefore(wrap, inp);
-  wrap.appendChild(inp);
-
-  var btn = document.createElement('button');
-  btn.className = 'btn';
-  btn.style.cssText = 'padding:4px 10px;font-size:12px';
-  btn.textContent = 'detect';
-  wrap.appendChild(btn);
-
-  var sel = document.createElement('select');
-  sel.style.cssText = 'font-size:12px;background:#1a1a2e;color:#e0e0e0;border:1px solid #0f3460;border-radius:4px;padding:4px';
-  var o0 = document.createElement('option');
-  o0.value = ''; o0.textContent = 'preset...';
-  sel.appendChild(o0);
-  TZ_ZONES.forEach(function(tz) {
-    var o = document.createElement('option'); o.value = tz; o.textContent = tz;
-    sel.appendChild(o);
-  });
-  wrap.appendChild(sel);
-
-  btn.onclick = function() {
-    try {
-      var detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      inp.value = getPosixTz(detected);
-      inp.title = detected;
-    } catch(e) { inp.value = 'detection failed'; }
-  };
-
-  sel.onchange = function() {
-    if (sel.value) {
-      try { inp.value = getPosixTz(sel.value); inp.title = sel.value; }
-      catch(e) { inp.value = 'error'; }
-    }
-  };
-}
-
+function attachTzHelper(inp){var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap';inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);var btn=document.createElement('button');btn.className='btn';btn.style.cssText='padding:4px 10px;font-size:12px';btn.textContent='detect';wrap.appendChild(btn);var sel=document.createElement('select');sel.style.cssText='font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px';var o0=document.createElement('option');o0.value='';o0.textContent='preset...';sel.appendChild(o0);TZ_ZONES.forEach(function(tz){var o=document.createElement('option');o.value=tz;o.textContent=tz;sel.appendChild(o)});wrap.appendChild(sel);btn.onclick=function(){try{var detected=Intl.DateTimeFormat().resolvedOptions().timeZone;inp.value=getPosixTz(detected);inp.title=detected}catch(e){inp.value='detection failed'}};sel.onchange=function(){if(sel.value){try{inp.value=getPosixTz(sel.value);inp.title=sel.value}catch(e){inp.value='error'}}}}
 
 async function loadConfig() {
-  const sp = document.getElementById('configSpinner');
-  sp.style.display = 'block';
-  var CFG_SECTIONS = ['WiFi & Network', 'Time & Timezone', 'Oximetry', 'UART', 'Advanced'];
+  const sp = document.getElementById('configSpinner'); sp.style.display = 'block';
+  var CFG_SECTIONS = ['WiFi & Network','Time & Timezone','Oximetry','UART','Advanced'];
   var CFG_META = {
-    hostname:       ['WiFi & Network', 'Device hostname (mDNS + AP name)'],
-    wifi_ssid:      ['WiFi & Network', 'WiFi network name (station mode)'],
-    wifi_pass:      ['WiFi & Network', 'WiFi password'],
-    wifi_mode:      ['WiFi & Network', '0=station, 1=AP, 2=off'],
-    tcp_port:       ['WiFi & Network', 'TCP command port'],
-    debug_port:     ['WiFi & Network', 'Debug log stream port (read-only)'],
-    http_port:      ['WiFi & Network', 'Web server port'],
-    http_user:      ['WiFi & Network', 'Web UI username'],
-    http_pass:      ['WiFi & Network', 'Web UI password'],
-    ota_password:   ['WiFi & Network', 'ArduinoOTA password'],
-    udp_oxi_port:   ['WiFi & Network', 'UDP oximetry port (0=disabled)'],
-    ntp_server:     ['Time & Timezone', 'NTP server (empty = DHCP or pool.ntp.org)'],
-    tz:             ['Time & Timezone', 'POSIX timezone string'],
-    oxi_enabled:    ['Oximetry', 'Enable BLE oximeter support'],
-    oxi_auto_start: ['Oximetry', 'Auto-start feeding on connect'],
-    oxi_feed_therapy_only: ['Oximetry', 'Only inject during active therapy'],
-    oxi_device_type:['Oximetry', '0=auto, 1=Nonin, 2=O2Ring, 3=PLX'],
-    oxi_device_addr:['Oximetry', 'Preferred oximeter MAC'],
-    oxi_interval_ms:['Oximetry', 'Injection interval (ms)'],
-    oxi_lframe_continuous: ['Oximetry', 'Send L-frames even without valid reading'],
-    uart_baud:      ['UART', 'AirSense UART baud rate'],
-    uart_cmd_timeout_ms: ['UART', 'Command response timeout (ms)'],
-    uart_max_retries: ['UART', 'Retry count for failed commands'],
-    allow_transparent_during_therapy: ['Advanced', 'Allow raw UART passthrough during therapy'],
-    mitm_mode:      ['Advanced', '0=off, 1=forward, 2=log, 3=filter'],
+    hostname:['WiFi & Network','Device hostname (mDNS + AP name)'],wifi_ssid:['WiFi & Network','WiFi network name (station mode)'],wifi_pass:['WiFi & Network','WiFi password'],wifi_mode:['WiFi & Network','0=station, 1=AP, 2=off'],tcp_port:['WiFi & Network','TCP command port'],debug_port:['WiFi & Network','Debug log stream port (read-only)'],http_port:['WiFi & Network','Web server port'],http_user:['WiFi & Network','Web UI username'],http_pass:['WiFi & Network','Web UI password'],ota_password:['WiFi & Network','ArduinoOTA password'],udp_oxi_port:['WiFi & Network','UDP oximetry port (0=disabled)'],
+    ntp_server:['Time & Timezone','NTP server (empty = DHCP or pool.ntp.org)'],tz:['Time & Timezone','POSIX timezone string'],
+    oxi_enabled:['Oximetry','Enable BLE oximeter support'],oxi_auto_start:['Oximetry','Auto-start feeding on connect'],oxi_feed_therapy_only:['Oximetry','Only inject during active therapy'],oxi_device_type:['Oximetry','0=auto, 1=Nonin, 2=O2Ring, 3=PLX'],oxi_device_addr:['Oximetry','Preferred oximeter MAC'],oxi_interval_ms:['Oximetry','Injection interval (ms)'],oxi_lframe_continuous:['Oximetry','Send L-frames even without valid reading'],
+    uart_baud:['UART','AirSense UART baud rate'],uart_cmd_timeout_ms:['UART','Command response timeout (ms)'],uart_max_retries:['UART','Retry count for failed commands'],
+    allow_transparent_during_therapy:['Advanced','Allow raw UART passthrough during therapy'],mitm_mode:['Advanced','0=off, 1=forward, 2=log, 3=filter']
   };
-
   try {
-    const r = await api('/api/config');
-    if (!r) return;
+    const r = await api('/api/config'); if (!r) return;
     const d = await r.json();
-    const el = document.getElementById('configFields');
-    el.innerHTML = '';
+    const el = document.getElementById('configFields'); el.innerHTML = '';
     var lastGroup = '';
-    var entries = Object.entries(d).sort(function(a, b) {
-      var sa = CFG_META[a[0]] ? CFG_SECTIONS.indexOf(CFG_META[a[0]][0]) : 99;
-      var sb = CFG_META[b[0]] ? CFG_SECTIONS.indexOf(CFG_META[b[0]][0]) : 99;
-      return sa - sb;
-    });
-    for (const [k, v] of entries) {
-      var meta = CFG_META[k] || ['Other', ''];
+    var entries = Object.entries(d).sort(function(a,b){var sa=CFG_META[a[0]]?CFG_SECTIONS.indexOf(CFG_META[a[0]][0]):99;var sb=CFG_META[b[0]]?CFG_SECTIONS.indexOf(CFG_META[b[0]][0]):99;return sa-sb});
+    for (const [k,v] of entries) {
+      var meta = CFG_META[k] || ['Other',''];
       if (meta[0] !== lastGroup) {
         lastGroup = meta[0];
         var hdr = document.createElement('h4');
         hdr.textContent = lastGroup;
-        hdr.style.cssText = 'color:#e94560;margin:16px 0 8px;font-size:14px';
+        hdr.style.cssText = 'color:var(--accent);margin:16px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.5px';
         el.appendChild(hdr);
       }
-      var row = document.createElement('div');
-      row.className = 'row';
+      var row = document.createElement('div'); row.className = 'row';
       var isPass = k.includes('pass');
-      row.innerHTML = '<label>' + k +
-        (meta[1] ? '<br><small style="color:#666;font-weight:normal">' + meta[1] + '</small>' : '') +
-        '</label><input type="' + (isPass ? 'password' : 'text') +
-        '" data-key="' + k + '" value="' + (isPass ? '' : v) + '">';
+      row.innerHTML = '<label>' + k + (meta[1] ? '<br><small style="color:#555;font-weight:normal">' + meta[1] + '</small>' : '') + '</label><input type="' + (isPass ? 'password' : 'text') + '" data-key="' + k + '" value="' + (isPass ? '' : v) + '">';
       el.appendChild(row);
       if (k === 'tz') attachTzHelper(row.querySelector('input'));
     }
-  } catch (e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
   sp.style.display = 'none';
 }
 
 async function saveConfig() {
   const changes = {};
-  document.querySelectorAll('#configFields [data-key]').forEach(inp => {
-    if (inp.value !== '') changes[inp.dataset.key] = inp.value;
-  });
+  document.querySelectorAll('#configFields [data-key]').forEach(inp => { if (inp.value !== '') changes[inp.dataset.key] = inp.value; });
   const msgEl = document.getElementById('configMsg');
-  if (!Object.keys(changes).length) {
-    showMsg(msgEl, 'No changes', 'ok');
-    return;
-  }
+  if (!Object.keys(changes).length) { showMsg(msgEl, 'No changes', 'ok'); return; }
   try {
-    const r = await api('/api/config', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(changes)
-    });
+    const r = await api('/api/config', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)});
     if (!r) return;
     const d = await r.json();
     showMsg(msgEl, d.ok ? 'Config saved' : 'Error: ' + (d.error || 'unknown'), d.ok ? 'ok' : 'err');
-  } catch (e) {
-    showMsg(msgEl, 'Error: ' + e.message, 'err');
-  }
+  } catch(e) { showMsg(msgEl, 'Error: ' + e.message, 'err'); }
 }
 
 function showMsg(el, text, type, timeout) {
-  if (!el) return;
-  el.textContent = text;
-  el.className = 'msg ' + type;
-  if (el._msgTimer) clearTimeout(el._msgTimer);
-  if (timeout !== 0) el._msgTimer = setTimeout(() => {
-    el.className = 'msg';
-  }, timeout || 5000);
+  // Inline msg element
+  if (el) {
+    el.textContent = text;
+    el.className = 'msg ' + type;
+    if (el._msgTimer) clearTimeout(el._msgTimer);
+    if (timeout !== 0) el._msgTimer = setTimeout(() => { el.className = 'msg'; }, timeout || 5000);
+  }
+  // Toast
+  var tc = document.getElementById('toastContainer');
+  if (tc) {
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = text;
+    tc.appendChild(toast);
+    var dur = timeout || 5000;
+    if (dur > 0) setTimeout(function() { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(function() { toast.remove(); }, 300); }, dur);
+  }
 }
 
-// BLE management
+// BLE
 let bleTimer = null;
 async function loadBle() {
   try {
-    const r = await api('/api/ble');
-    if (!r) return;
+    const r = await api('/api/ble'); if (!r) return;
     const d = await r.json();
-    const g = document.getElementById('bleStatusGrid');
-    g.innerHTML = '';
-    const fields = {
-      state: d.state,
-      feeding: d.feeding,
-      spo2: d.spo2 >= 0 ? d.spo2 + '%' : '--',
-      pulse: d.pulse >= 0 ? d.pulse + ' bpm' : '--',
-      configured: d.configured_addr || '(none)',
-      auto_start: d.auto_start
-    };
-    for (const [k, v] of Object.entries(fields))
-      g.innerHTML += `<div class="stat">
-<span class="k">${k}:</span> <span class="v" data-field="${k}">${v}</span>
-</div>`;
+    const g = document.getElementById('bleStatusGrid'); g.innerHTML = '';
+    const fields = {state:d.state,feeding:d.feeding,spo2:d.spo2>=0?d.spo2+'%':'--',pulse:d.pulse>=0?d.pulse+' bpm':'--',configured:d.configured_addr||'(none)',auto_start:d.auto_start};
+    for (const [k,v] of Object.entries(fields))
+      g.innerHTML += '<div class="stat"><span class="k">'+k+':</span> <span class="v" data-field="'+k+'">'+v+'</span></div>';
     const fb = document.getElementById('btnFeed');
-    if (d.feeding === 'yes') {
-      fb.textContent = 'Stop Feed';
-      fb.onclick = () => bleAction('stop_feed');
-    } else {
-      fb.textContent = 'Start Feed';
-      fb.onclick = () => bleAction('start_feed');
-    }
+    if (d.feeding === 'yes') { fb.textContent = 'Stop Feed'; fb.onclick = () => bleAction('stop_feed'); }
+    else { fb.textContent = 'Start Feed'; fb.onclick = () => bleAction('start_feed'); }
     const sp = document.getElementById('bleScanSpinner');
     sp.style.display = d.state === 'SCANNING' ? 'inline-block' : 'none';
-    const dl = document.getElementById('bleDevices');
-    dl.innerHTML = '';
+    const dl = document.getElementById('bleDevices'); dl.innerHTML = '';
     if (d.devices && d.devices.length) {
       d.devices.forEach(dev => {
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML = `<label>
-<strong>${dev.name||'Unknown'}</strong>
-<br>
-<small style="color:#888">${dev.addr} (${dev.rssi} dBm)</small>
-</label>` +
-          `<button class="btn" onclick="bleConnect('${dev.addr}')">Connect</button>`;
+        const row = document.createElement('div'); row.className = 'row';
+        row.innerHTML = '<label><strong>'+(dev.name||'Unknown')+'</strong><br><small style="color:var(--text-dim)">'+dev.addr+' ('+dev.rssi+' dBm)</small></label><button class="btn btn-accent" onclick="bleConnect(\''+dev.addr+'\')">Connect</button>';
         dl.appendChild(row);
       });
     } else {
-      dl.innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">No devices found. Click Scan to search.</div>';
+      dl.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">No devices found. Click Scan to search.</div>';
     }
-    const bl = document.getElementById('bleBonds');
-    bl.innerHTML = '';
+    // Update dashboard oxi address
+    var oa = document.getElementById('dashOxiAddr');
+    if (oa && d.configured_addr) {
+      oa.textContent = d.configured_addr;
+      oa.style.display = '';
+    }
+    const bl = document.getElementById('bleBonds'); bl.innerHTML = '';
     if (d.bonds && d.bonds.length) {
       d.bonds.forEach(addr => {
-        const row = document.createElement('div');
-        row.className = 'row';
-        row.innerHTML = `<label style="font-family:monospace">${addr}</label>` +
-          `<button class="btn" onclick="bleAction('delete_bond','${addr}')" style="background:#c73a52;padding:4px 12px;font-size:12px">Delete</button>`;
+        const row = document.createElement('div'); row.className = 'row';
+        row.innerHTML = '<label style="font-family:monospace">'+addr+'</label><button class="btn btn-danger" onclick="bleAction(\'delete_bond\',\''+addr+'\')" style="padding:4px 12px;font-size:12px">Delete</button>';
         bl.appendChild(row);
       });
     } else {
-      bl.innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">No bonded devices</div>';
+      bl.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">No bonded devices</div>';
     }
-  } catch (e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 async function bleScan() {
@@ -1126,21 +980,14 @@ async function bleScan() {
   document.getElementById('bleScanSpinner').style.display = 'inline-block';
   let polls = 0;
   bleTimer = setInterval(async () => {
-    await loadBle();
-    polls++;
-    const r = await api('/api/ble');
-    if (!r) return;
+    await loadBle(); polls++;
+    const r = await api('/api/ble'); if (!r) return;
     const d = await r.json();
-    if (d.state !== 'SCANNING' || polls > 20) {
-      clearInterval(bleTimer);
-      bleTimer = null;
-      document.getElementById('bleScanSpinner').style.display = 'none';
-    }
+    if (d.state !== 'SCANNING' || polls > 20) { clearInterval(bleTimer); bleTimer = null; document.getElementById('bleScanSpinner').style.display = 'none'; }
   }, 1500);
 }
 
 var pendingConnect = false;
-
 async function bleConnect(addr) {
   var msgEl = document.getElementById('bleMsg');
   showMsg(msgEl, 'Connecting to ' + addr + '...', 'ok', 0);
@@ -1150,31 +997,18 @@ async function bleConnect(addr) {
 
 async function bleAction(action, addr) {
   try {
-    const body = addr ? {
-      action,
-      addr
-    } : {
-      action
-    };
-    const r = await api('/api/ble', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
+    const body = addr ? {action,addr} : {action};
+    const r = await api('/api/ble', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if (!r) return;
     const d = await r.json();
     if (action !== 'scan') showMsg(document.getElementById('bleMsg'), d.result, 'ok');
     setTimeout(loadBle, 500);
-  } catch (e) {
-    showMsg(document.getElementById('bleMsg'), 'Error: ' + e.message, 'err');
-  }
+  } catch(e) { showMsg(document.getElementById('bleMsg'), 'Error: ' + e.message, 'err'); }
 }
 
+// Console
 const cmdHistory = [];
 let histIdx = -1;
-
 function cmdLog(text, color) {
   const el = document.getElementById('cmdOutput');
   const line = document.createElement('span');
@@ -1185,173 +1019,87 @@ function cmdLog(text, color) {
 }
 async function sendCmd() {
   const inp = document.getElementById('cmdInput');
-  const cmd = inp.value.trim();
-  if (!cmd) return;
-  cmdHistory.push(cmd);
-  histIdx = cmdHistory.length;
-  inp.value = '';
-  cmdLog('> ' + cmd, '#888');
+  const cmd = inp.value.trim(); if (!cmd) return;
+  cmdHistory.push(cmd); histIdx = cmdHistory.length; inp.value = '';
+  cmdLog('> ' + cmd, 'var(--text-dim)');
   try {
-    const r = await api('/api/cmd', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        cmd
-      })
-    });
+    const r = await api('/api/cmd', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd})});
     if (!r) return;
     const d = await r.json();
-    if (d.error) cmdLog(d.error, '#f87171');
-    else if (d.response) cmdLog(d.response, '#4ade80');
-    else cmdLog('OK', '#4ade80');
-  } catch (e) {
-    cmdLog('Error: ' + e.message, '#f87171');
-  }
+    if (d.error) cmdLog(d.error, 'var(--red)');
+    else if (d.response) cmdLog(d.response, 'var(--green)');
+    else cmdLog('OK', 'var(--green)');
+  } catch(e) { cmdLog('Error: ' + e.message, 'var(--red)'); }
 }
-
-function clearConsole() {
-  document.getElementById('cmdOutput').innerHTML = '';
-}
+function clearConsole() { document.getElementById('cmdOutput').innerHTML = ''; }
 document.getElementById('cmdInput').addEventListener('keydown', e => {
-  if (e.key === 'ArrowUp' && cmdHistory.length) {
-    histIdx = Math.max(0, histIdx - 1);
-    e.target.value = cmdHistory[histIdx] || '';
-  }
-  if (e.key === 'ArrowDown') {
-    histIdx = Math.min(cmdHistory.length, histIdx + 1);
-    e.target.value = cmdHistory[histIdx] || '';
-  }
+  if (e.key === 'ArrowUp' && cmdHistory.length) { histIdx = Math.max(0, histIdx - 1); e.target.value = cmdHistory[histIdx] || ''; }
+  if (e.key === 'ArrowDown') { histIdx = Math.min(cmdHistory.length, histIdx + 1); e.target.value = cmdHistory[histIdx] || ''; }
 });
 
-const dz = document.getElementById('dropZone'),
-  fi = document.getElementById('fileInput');
+// Upload
+const dz = document.getElementById('dropZone'), fi = document.getElementById('fileInput');
 dz.addEventListener('click', () => fi.click());
-dz.addEventListener('dragover', e => {
-  e.preventDefault();
-  dz.classList.add('dragover');
-});
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-dz.addEventListener('drop', e => {
-  e.preventDefault();
-  dz.classList.remove('dragover');
-  uploadFile(e.dataTransfer.files[0]);
-});
-fi.addEventListener('change', e => {
-  if (e.target.files[0]) uploadFile(e.target.files[0]);
-});
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); uploadFile(e.dataTransfer.files[0]); });
+fi.addEventListener('change', e => { if (e.target.files[0]) uploadFile(e.target.files[0]); });
 
 function showFwWarnings(d) {
-  const el = document.getElementById('fwWarnings');
-  el.innerHTML = '';
-  const warn = (msg, cls) => {
-    const div = document.createElement('div');
-    div.className = 'msg ' + cls;
-    div.style.display = 'block';
-    div.textContent = msg;
-    el.appendChild(div);
-  };
+  const el = document.getElementById('fwWarnings'); el.innerHTML = '';
+  const warn = (msg, cls) => { const div = document.createElement('div'); div.className = 'msg ' + cls; div.style.display = 'block'; div.textContent = msg; el.appendChild(div); };
   let allOk = true;
-  if (d.bid !== undefined && d.bid_ok === 'false') {
-    warn('Unknown bootloader version: ' + d.bid + '. Expected SX577-0200.', 'err');
-    allOk = false;
-  }
-  if (d.blx_crc === 'fail') {
-    warn('BLX (bootloader) CRC mismatch. Will not boot with integrity-checking bootloader.', 'err');
-    allOk = false;
-  }
-  if (d.ccx_crc === 'fail') {
-    warn('CCX (config) CRC mismatch. Will not boot with integrity-checking bootloader.', 'err');
-    allOk = false;
-  }
-  if (d.cdx_crc === 'fail') {
-    warn('CDX (firmware) CRC mismatch. Will not boot with integrity-checking bootloader.', 'err');
-    allOk = false;
-  }
-  if (d.blx_patch === 'method_a') {
-    warn('\u26a0\ufe0f DANGER: This bootloader permanently disables serial flashing! Device will require SWD to recover. Do NOT flash unless you have SWD access.', 'err');
-    allOk = false;
-  } else if (d.blx_patch === 'method_b') {
-    warn('Bootloader integrity check disabled (safe method).', 'ok');
-  } else if (d.blx_patch === 'none' && d.bid !== undefined) {
-    warn('Stock bootloader — firmware integrity checks enabled.', 'ok');
-  }
+  if (d.bid !== undefined && d.bid_ok === 'false') { warn('Unknown bootloader version: ' + d.bid + '. Expected SX577-0200.', 'err'); allOk = false; }
+  if (d.blx_crc === 'fail') { warn('BLX (bootloader) CRC mismatch.', 'err'); allOk = false; }
+  if (d.ccx_crc === 'fail') { warn('CCX (config) CRC mismatch.', 'err'); allOk = false; }
+  if (d.cdx_crc === 'fail') { warn('CDX (firmware) CRC mismatch.', 'err'); allOk = false; }
+  if (d.blx_patch === 'method_a') { warn('DANGER: This bootloader permanently disables serial flashing!', 'err'); allOk = false; }
+  else if (d.blx_patch === 'method_b') { warn('Bootloader integrity check disabled (safe method).', 'ok'); }
+  else if (d.blx_patch === 'none' && d.bid !== undefined) { warn('Stock bootloader - firmware integrity checks enabled.', 'ok'); }
   if (allOk && d.bid !== undefined) warn('All verification checks passed. BID: ' + d.bid, 'ok');
 }
 
 async function uploadFile(file) {
   const msgEl = document.getElementById('uploadMsg');
-  const info = document.getElementById('fileInfo');
-  info.textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  document.getElementById('fileInfo').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
   document.getElementById('fwWarnings').innerHTML = '';
-  const prog = document.getElementById('uploadProgress');
-  const bar = document.getElementById('uploadBar');
-  prog.style.display = 'block';
-  bar.style.width = '0%';
-  const fd = new FormData();
-  fd.append('firmware', file);
+  const prog = document.getElementById('uploadProgress'), bar = document.getElementById('uploadBar');
+  prog.style.display = 'block'; bar.style.width = '0%';
+  const fd = new FormData(); fd.append('firmware', file);
   try {
     const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable) bar.style.width = (e.loaded / e.total * 100) + '%';
-    };
+    xhr.upload.onprogress = e => { if (e.lengthComputable) bar.style.width = (e.loaded/e.total*100)+'%'; };
     xhr.onload = () => {
-      if (xhr.status === 200) {
-        const d = JSON.parse(xhr.responseText);
-        showMsg(msgEl, `Upload OK: ${d.size} bytes, CRC: ${d.crc||'n/a'}`, 'ok', 0);
-        showFwWarnings(d);
-        showFlashCard();
-      } else showMsg(msgEl, 'Upload failed: ' + xhr.statusText, 'err');
+      if (xhr.status === 200) { const d = JSON.parse(xhr.responseText); showMsg(msgEl, 'Upload OK: '+d.size+' bytes, CRC: '+(d.crc||'n/a'), 'ok', 0); showFwWarnings(d); showFlashCard(); }
+      else showMsg(msgEl, 'Upload failed: ' + xhr.statusText, 'err');
     };
     xhr.onerror = () => showMsg(msgEl, 'Upload error', 'err');
-    xhr.open('POST', '/api/upload');
-    xhr.send(fd);
-  } catch (e) {
-    showMsg(msgEl, 'Error: ' + e.message, 'err');
-  }
+    xhr.open('POST', '/api/upload'); xhr.send(fd);
+  } catch(e) { showMsg(msgEl, 'Error: ' + e.message, 'err'); }
 }
 
 async function checkFlashReady() {
-  try {
-    const r = await api('/api/flash');
-    if (!r) return;
-    const d = await r.json();
-    if (d.fw_size > 0) showFlashCard();
-    if (d.active === 'true') pollFlash();
-  } catch (e) {}
+  try { const r = await api('/api/flash'); if (!r) return; const d = await r.json(); if (d.fw_size > 0) showFlashCard(); if (d.active === 'true') pollFlash(); } catch(e) {}
 }
 
 async function showFlashCard() {
-  const card = document.getElementById('flashCard');
-  card.style.display = 'block';
+  const card = document.getElementById('flashCard'); card.style.display = 'block';
   try {
-    const r = await api('/api/flash');
-    if (!r) return;
-    const d = await r.json();
-    document.getElementById('flashDetected').textContent =
-      'Detected: ' + d.detected_block + ' (' + Math.round(d.fw_size / 1024) + ' KB)';
+    const r = await api('/api/flash'); if (!r) return; const d = await r.json();
+    document.getElementById('flashDetected').textContent = 'Detected: ' + d.detected_block + ' (' + Math.round(d.fw_size/1024) + ' KB)';
     const sel = document.getElementById('flashBlock');
-    if (d.detected_block && d.detected_block !== 'unknown') {
-      for (let i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value === d.detected_block) sel.selectedIndex = i;
-      }
-    }
+    if (d.detected_block && d.detected_block !== 'unknown') { for (let i = 0; i < sel.options.length; i++) { if (sel.options[i].value === d.detected_block) sel.selectedIndex = i; } }
     updateBlxVisibility();
-  } catch (e) {
-    console.error(e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 function updateBlxVisibility() {
   const v = document.getElementById('flashBlock').value;
-  const isFull = v === 'FULL';
-  const isBlx = v === 'BLX';
-  document.getElementById('blxFlashRow').style.display = isFull ? 'flex' : 'none';
-  const showForce = isBlx || (isFull && document.getElementById('flashBlx').checked);
+  document.getElementById('blxFlashRow').style.display = v === 'FULL' ? 'flex' : 'none';
+  const showForce = v === 'BLX' || (v === 'FULL' && document.getElementById('flashBlx').checked);
   document.getElementById('blxForceRow').style.display = showForce ? 'flex' : 'none';
   if (!showForce) document.getElementById('forceBlx').checked = false;
-  if (!isFull) document.getElementById('flashBlx').checked = false;
+  if (v !== 'FULL') document.getElementById('flashBlx').checked = false;
 }
 document.getElementById('flashBlock').addEventListener('change', updateBlxVisibility);
 document.getElementById('flashBlx').addEventListener('change', updateBlxVisibility);
@@ -1363,231 +1111,175 @@ async function startFlash() {
   const forceBlx = document.getElementById('forceBlx').checked;
   const msgEl = document.getElementById('flashMsg');
   try {
-    const r = await api('/api/flash', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        block: block || undefined,
-        flash_blx: flashBlx,
-        force_blx: forceBlx
-      })
-    });
-    if (!r) return;
-    const d = await r.json();
-    if (d.ok === 'false' || d.error) {
-      showMsg(msgEl, d.error || 'Flash failed', 'err');
-      return;
-    }
+    const r = await api('/api/flash', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({block:block||undefined,flash_blx:flashBlx,force_blx:forceBlx})});
+    if (!r) return; const d = await r.json();
+    if (d.ok === 'false' || d.error) { showMsg(msgEl, d.error || 'Flash failed', 'err'); return; }
     showMsg(msgEl, 'Flash started: ' + d.block, 'ok');
     document.getElementById('btnFlash').disabled = true;
     document.getElementById('btnFlashCancel').style.display = '';
     document.getElementById('flashProgress').style.display = 'block';
     pollFlash();
-  } catch (e) {
-    showMsg(msgEl, 'Error: ' + e.message, 'err');
-  }
+  } catch(e) { showMsg(msgEl, 'Error: ' + e.message, 'err'); }
 }
 
 function pollFlash() {
   if (flashPollTimer) clearInterval(flashPollTimer);
   flashPollTimer = setInterval(async () => {
     try {
-      const r = await api('/api/flash');
-      if (!r) return;
-      const d = await r.json();
-      const bar = document.getElementById('flashBar');
-      const phase = document.getElementById('flashPhase');
-      const msgEl = document.getElementById('flashMsg');
-      if (d.total > 0) bar.style.width = (d.sent / d.total * 100) + '%';
-      phase.textContent = d.phase + (d.total > 0 ? ' - ' + Math.round(d.sent / 1024) + '/' + Math.round(d.total / 1024) + ' KB' : '');
+      const r = await api('/api/flash'); if (!r) return; const d = await r.json();
+      const bar = document.getElementById('flashBar'), phase = document.getElementById('flashPhase'), msgEl = document.getElementById('flashMsg');
+      if (d.total > 0) bar.style.width = (d.sent/d.total*100)+'%';
+      phase.textContent = d.phase + (d.total > 0 ? ' - ' + Math.round(d.sent/1024) + '/' + Math.round(d.total/1024) + ' KB' : '');
       if (d.active !== 'true') {
-        clearInterval(flashPollTimer);
-        flashPollTimer = null;
+        clearInterval(flashPollTimer); flashPollTimer = null;
         document.getElementById('btnFlash').disabled = false;
         document.getElementById('btnFlashCancel').style.display = 'none';
         if (d.error) showMsg(msgEl, d.error, 'err');
         else if (d.phase === 'Complete') showMsg(msgEl, 'Flash completed successfully!', 'ok');
         else showMsg(msgEl, 'Flash finished: ' + d.phase, 'ok');
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch(e) { console.error(e); }
   }, 500);
 }
 
-async function cancelFlash() {
-  try {
-    await api('/api/flash/cancel', {
-      method: 'POST'
-    });
-  } catch (e) {
-    console.error(e);
-  }
-}
+async function cancelFlash() { try { await api('/api/flash/cancel', {method:'POST'}); } catch(e) { console.error(e); } }
 
-const WAVE_PTS = 120; // 60s at 2Hz
-const waveData = {
-  press: [],
-  flow: []
-};
-const slowData = {
-  spo2: [],
-  pulse: []
-};
-const SLOW_PTS = 150; // 5 min at 2s
-let liveTimer = null,
-  liveSeq = 0,
-  slowTick = 0;
+// Charts
+const WAVE_PTS = 120;
+const waveData = {press:[],flow:[]};
+const slowData = {spo2:[],pulse:[]};
+const SLOW_PTS = 150;
+let liveTimer = null, liveSeq = 0, slowTick = 0;
 
 function drawChart(canvasId, data, label, color, minY, maxY, unit, scale, signed) {
-  const c = document.getElementById(canvasId);
-  if (!c) return;
-  if (!c._sized && c.parentElement) {
-    c.width = c.parentElement.clientWidth;
-    c._sized = true;
-  }
+  const c = document.getElementById(canvasId); if (!c) return;
+  var pw = c.parentElement ? c.parentElement.clientWidth - 32 : c.width;
+  if (pw > 0 && pw !== c.width) c.width = pw;
   const ctx = c.getContext('2d');
-  const W = c.width,
-    H = c.height;
-  const pad = {
-    l: 44,
-    r: 8,
-    t: 18,
-    b: 4
-  };
-  const gw = W - pad.l - pad.r,
-    gh = H - pad.t - pad.b;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#1a1a2e';
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#0f346033';
+  const W = c.width, H = c.height;
+  const pad = {l:44,r:8,t:18,b:4};
+  const gw = W-pad.l-pad.r, gh = H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#08081a';
+  ctx.fillRect(0,0,W,H);
+  // Grid
+  ctx.strokeStyle = '#1a1a3a';
+  ctx.setLineDash([2,4]);
   ctx.lineWidth = 1;
-  const gridN = signed ? 4 : 4;
-  for (let i = 0; i <= gridN; i++) {
-    const y = pad.t + gh * (i / gridN);
-    ctx.beginPath();
-    ctx.moveTo(pad.l, y);
-    ctx.lineTo(W - pad.r, y);
-    ctx.stroke();
-  }
+  for (let i = 0; i <= 4; i++) { const y = pad.t+gh*(i/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke(); }
+  ctx.setLineDash([]);
   if (signed && minY < 0) {
-    const zy = pad.t + gh * (1 - (0 - minY) / (maxY - minY));
-    ctx.strokeStyle = '#0f346088';
-    ctx.beginPath();
-    ctx.moveTo(pad.l, zy);
-    ctx.lineTo(W - pad.r, zy);
-    ctx.stroke();
+    const zy = pad.t+gh*(1-(0-minY)/(maxY-minY));
+    ctx.strokeStyle = '#1a1a3a88';
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,zy); ctx.lineTo(W-pad.r,zy); ctx.stroke();
+    ctx.setLineDash([]);
   }
-  ctx.fillStyle = '#888';
+  // Y labels
+  ctx.fillStyle = '#555';
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
-  for (let i = 0; i <= gridN; i++) {
-    const v = maxY - (maxY - minY) * (i / gridN);
-    ctx.fillText((v / scale).toFixed(Math.abs(v / scale) >= 10 ? 0 : 1) + unit, pad.l - 4, pad.t + gh * (i / gridN) + 3);
+  for (let i = 0; i <= 4; i++) {
+    const v = maxY-(maxY-minY)*(i/4);
+    ctx.fillText((v/scale).toFixed(Math.abs(v/scale)>=10?0:1)+unit, pad.l-4, pad.t+gh*(i/4)+3);
   }
+  // Current value
+  const cur = data.length ? data[data.length-1] : -32768;
+  const curStr = (cur > -32000) ? (cur/scale).toFixed(1)+unit : '--';
   ctx.fillStyle = color;
   ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'left';
-  const cur = data.length ? data[data.length - 1] : -32768;
-  const curStr = (cur > -32000) ? (cur / scale).toFixed(1) + unit : '--';
-  ctx.fillText(label + ': ' + curStr, pad.l, 12);
+  ctx.fillText(label+': '+curStr, pad.l, 12);
   if (data.length < 2) return;
-  const maxPts = data.length;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1;
+  // Line with glow
+  ctx.strokeStyle = color+'44';
+  ctx.lineWidth = 4;
   ctx.beginPath();
   let started = false;
-  for (let i = 0; i < maxPts; i++) {
-    const v = data[i];
-    if (v < -32000) continue;
-    const x = pad.l + gw * (i / (maxPts - 1));
-    const y = pad.t + gh * (1 - Math.max(0, Math.min(1, (v - minY) / (maxY - minY))));
-    if (!started) {
-      ctx.moveTo(x, y);
-      started = true;
-    } else ctx.lineTo(x, y);
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] < -32000) continue;
+    const x = pad.l+gw*(i/(data.length-1));
+    const y = pad.t+gh*(1-Math.max(0,Math.min(1,(data[i]-minY)/(maxY-minY))));
+    if (!started) { ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // Sharp line
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  started = false;
+  for (let i = 0; i < data.length; i++) {
+    if (data[i] < -32000) continue;
+    const x = pad.l+gw*(i/(data.length-1));
+    const y = pad.t+gh*(1-Math.max(0,Math.min(1,(data[i]-minY)/(maxY-minY))));
+    if (!started) { ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
   }
   ctx.stroke();
 }
 
 function updateCharts() {
-  drawChart('cPress', waveData.press, 'Pressure', '#4ade80', 0, 1500, '', 50, false);
+  drawChart('cPress', waveData.press, 'Pressure', '#22d3ee', 0, 1500, '', 50, false);
   drawChart('cFlow', waveData.flow, 'Flow (L/min)', '#818cf8', -500, 500, ' ', 8.33, true);
-  drawChart('cSpo2', slowData.spo2, 'SpO2', '#60a5fa', 80, 100, '%', 1, false);
-  drawChart('cPulse', slowData.pulse, 'Pulse', '#f87171', 40, 160, '', 1, false);
+  drawChart('cSpo2', slowData.spo2, 'SpO2', '#4ade80', 80, 100, '%', 1, false);
+  drawChart('cPulse', slowData.pulse, 'Pulse', '#e94560', 40, 160, '', 1, false);
+  // Update chart header values
+  var p = waveData.press, f = waveData.flow, s = slowData.spo2, hr = slowData.pulse;
+  var el;
+  function lastValid(arr, scale) {
+    for (var i = arr.length - 1; i >= 0; i--) { if (arr[i] > -32000) return (arr[i]/scale).toFixed(1); }
+    return '--';
+  }
+  el = document.getElementById('chartPressVal'); if (el) el.textContent = lastValid(p, 50);
+  el = document.getElementById('chartFlowVal'); if (el) el.textContent = lastValid(f, 8.33);
+  el = document.getElementById('chartSpo2Val'); if (el) { var v = lastValid(s, 1); el.textContent = v !== '--' ? parseInt(v) : '--'; }
+  el = document.getElementById('chartPulseVal'); if (el) { var v = lastValid(hr, 1); el.textContent = v !== '--' ? parseInt(v) : '--'; }
 }
 
 let liveBusy = false;
 async function pollLive() {
-  if (liveBusy) return; // don't pile up requests
+  if (liveBusy) return;
   liveBusy = true;
   try {
-    const r = await api('/api/live?since=' + liveSeq);
-    if (!r) {
-      liveBusy = false;
-      return;
-    }
+    const r = await api('/api/live?since='+liveSeq);
+    if (!r) { liveBusy=false; return; }
     const d = await r.json();
     liveSeq = d.seq;
     if (d.samples && d.samples.length) {
-      d.samples.forEach(s => {
-        waveData.press.push(s[0]);
-        waveData.flow.push(s[1]);
-      });
-      for (const k in waveData) {
-        while (waveData[k].length > WAVE_PTS) waveData[k].shift();
-      }
+      d.samples.forEach(s => { waveData.press.push(s[0]); waveData.flow.push(s[1]); });
+      for (const k in waveData) { while (waveData[k].length > WAVE_PTS) waveData[k].shift(); }
     }
     slowTick++;
     if (slowTick >= 4) {
-      slowData.spo2.push(d.spo2);
-      slowData.pulse.push(d.pulse);
+      slowData.spo2.push(d.spo2 >= 0 ? d.spo2 : -32768);
+      slowData.pulse.push(d.pulse >= 0 ? d.pulse : -32768);
       while (slowData.spo2.length > SLOW_PTS) slowData.spo2.shift();
       while (slowData.pulse.length > SLOW_PTS) slowData.pulse.shift();
       slowTick = 0;
     }
     updateCharts();
-    document.getElementById('liveStatus').textContent =
-      'Running (' + waveData.press.length + ' pts, ' + (d.samples ? d.samples.length : 0) + ' new)';
-  } catch (e) {
-    console.error(e);
-  }
+    document.getElementById('liveStatus').textContent = 'Running (' + waveData.press.length + ' pts)';
+  } catch(e) { console.error(e); }
   liveBusy = false;
 }
 
 function toggleLive() {
   if (liveTimer) {
-    clearInterval(liveTimer);
-    liveTimer = null;
-    api('/api/live', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: '{"action":"stop"}'
-    });
+    clearInterval(liveTimer); liveTimer = null;
+    api('/api/live', {method:'POST',headers:{'Content-Type':'application/json'},body:'{"action":"stop"}'});
     document.getElementById('btnLive').textContent = 'Start';
     document.getElementById('liveStatus').textContent = 'Stopped';
   } else {
-    liveSeq = 0;
-    slowTick = 0;
+    liveSeq = 0; slowTick = 0;
     for (const k in waveData) waveData[k] = [];
     for (const k in slowData) slowData[k] = [];
-    api('/api/live', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: '{"action":"start"}'
-    });
+    api('/api/live', {method:'POST',headers:{'Content-Type':'application/json'},body:'{"action":"start"}'});
     liveTimer = setInterval(pollLive, 500);
     document.getElementById('btnLive').textContent = 'Stop';
     document.getElementById('liveStatus').textContent = 'Starting...';
   }
 }
 
+// Init
 const ht = window.location.hash.slice(1);
 showTab(tabNames.includes(ht) ? ht : 'status');
 initSSE();
