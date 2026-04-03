@@ -194,8 +194,8 @@ bool WiFiSetup::time_synced() {
 }
 
 
-void WiFiSetup::set_fallback_time(int year, int month, int day, int hour, int min, int sec) {
-    if (ntp_synced) return;
+void WiFiSetup::set_fallback_time(int year, int month, int day, int hour, int min, int sec, bool force) {
+    if (ntp_synced && !force) return;
 
     struct tm t = {};
     t.tm_year = year - 1900;
@@ -220,4 +220,9 @@ void WiFiSetup::set_fallback_time(int year, int month, int day, int hour, int mi
 
     Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Fallback time from ResMed: %04d-%02d-%02d %02d:%02d\n",
               year, month, day, hour, min);
+}
+
+void WiFiSetup::force_ntp_sync() {
+    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Forcing NTP resync\n");
+    sync_ntp();
 }

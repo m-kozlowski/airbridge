@@ -1023,6 +1023,39 @@ void WebUI::push_event(const char *event, const String &json) {
     if (events) events->send(json.c_str(), event, millis());
 }
 
+extern bool push_time_to_resmed();
+extern bool pull_time_from_resmed();
+
+static void handleTimeAction(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+    String body = getBody(request);
+    String action;
+    json_foreach_kv(body, [](const String &key, const String &val, void *p) {
+        if (key == "action") *(String*)p = val;
+    }, &action);
+
+    String result = "unknown action";
+    bool ok = false;
+
+    if (action == "ntp_sync") {
+        WiFiSetup::force_ntp_sync();
+        result = "NTP resync triggered";
+        ok = true;
+    } else if (action == "sync_to_resmed") {
+        ok = push_time_to_resmed();
+        result = ok ? "ResMed clock updated" : "Failed (NTP not synced or device error)";
+    } else if (action == "sync_from_resmed") {
+        ok = pull_time_from_resmed();
+        result = ok ? "ESP32 clock set from ResMed" : "Failed to read ResMed clock";
+    }
+
+    String json = "{";
+    jsonAddString(json, "ok", ok ? "true" : "false", false);
+    jsonAddString(json, "result", result.c_str());
+    json += '}';
+    request->send(200, "application/json", json);
+}
+
 void WebUI::init(uint16_t port) {
     if (port == 0) return;
 
@@ -1045,6 +1078,7 @@ void WebUI::init(uint16_t port) {
     http->on("/api/flash", HTTP_GET, handleFlashStatus);
     http->on("/api/flash", HTTP_POST, handleFlashStart, NULL, handleJsonBody);
     http->on("/api/flash/cancel", HTTP_POST, handleFlashCancel);
+    http->on("/api/time", HTTP_POST, handleTimeAction, NULL, handleJsonBody);
     http->on("/api/report", HTTP_GET, handleReport);
     http->on("/api/reboot", HTTP_POST, handleReboot);
 

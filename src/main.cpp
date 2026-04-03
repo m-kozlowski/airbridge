@@ -133,6 +133,8 @@ static void attempt_recovery() {
     }
 }
 
+bool pull_time_from_resmed();
+
 void setup() {
     Serial.begin(115200);
     delay(500);
@@ -157,20 +159,7 @@ void setup() {
     if (wifi_ok) OtaManager::init();
 
     // If NTP didn't sync, fall back to resmed device clock
-    if (!WiFiSetup::time_synced()) {
-        char dac_resp[32] = {}, tic_resp[32] = {};
-        uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
-        Arbiter::send_cmd("G S #DAC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, dac_resp, &dac_len);
-        Arbiter::send_cmd("G S #TIC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, tic_resp, &tic_len);
-        const char *dv = qframe_response_value(dac_resp);
-        const char *tv = qframe_response_value(tic_resp);
-        if (dv && tv && strlen(dv) >= 8 && strlen(tv) >= 6) {
-            int dd, mm, yyyy, hh, mn, ss;
-            if (sscanf(dv, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
-                sscanf(tv, "%2d%2d%2d", &hh, &mn, &ss) == 3)
-                WiFiSetup::set_fallback_time(yyyy, mm, dd, hh, mn, ss);
-        }
-    }
+    if (!WiFiSetup::time_synced()) pull_time_from_resmed();
 
     OxiArbiter::init();
     OxiBle::init();
@@ -184,11 +173,8 @@ static bool resmed_time_set = false;
 
 void reset_resmed_time_sync() { resmed_time_set = false; }
 
-static void sync_resmed_clock() {
-    if (resmed_time_set || !WiFiSetup::time_synced()) return;
-
-    system_state_t st = Arbiter::get_state();
-    if (st != SYS_IDLE && st != SYS_THERAPY) return;
+bool push_time_to_resmed() {
+    if (!WiFiSetup::time_synced()) return false;
 
     struct tm t;
     time_t now = time(nullptr);
@@ -214,7 +200,34 @@ static void sync_resmed_clock() {
         Log::logf(CAT_INIT, LOG_WARN, "[INIT] ResMed clock set failed (dac=%d tic=%d)\n",
                   ok_dac, ok_tic);
     }
-    resmed_time_set = true;
+    return ok_dac && ok_tic;
+}
+
+bool pull_time_from_resmed() {
+    char dac_resp[32] = {}, tic_resp[32] = {};
+    uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
+    Arbiter::send_cmd("G S #DAC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, dac_resp, &dac_len);
+    Arbiter::send_cmd("G S #TIC", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, tic_resp, &tic_len);
+    const char *dv = qframe_response_value(dac_resp);
+    const char *tv = qframe_response_value(tic_resp);
+    if (dv && tv && strlen(dv) >= 8 && strlen(tv) >= 6) {
+        int dd, mm, yyyy, hh, mn, ss;
+        if (sscanf(dv, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
+            sscanf(tv, "%2d%2d%2d", &hh, &mn, &ss) == 3) {
+            WiFiSetup::set_fallback_time(yyyy, mm, dd, hh, mn, ss, true);
+            Log::logf(CAT_INIT, LOG_INFO, "[INIT] Time from ResMed: %04d-%02d-%02d %02d:%02d:%02d\n",
+                      yyyy, mm, dd, hh, mn, ss);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sync_resmed_clock() {
+    if (resmed_time_set) return;
+    system_state_t st = Arbiter::get_state();
+    if (st != SYS_IDLE && st != SYS_THERAPY) return;
+    if (push_time_to_resmed()) resmed_time_set = true;
 }
 
 void loop() {
