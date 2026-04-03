@@ -80,11 +80,24 @@ static void poll_therapy_state() {
             if (val == 1 && current == SYS_IDLE) {
                 Arbiter::set_state(SYS_THERAPY);
                 Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Therapy started\n");
-                WebUI::push_event("status", "{\"system\":\"THERAPY\"}");
             } else if (val == 0 && current == SYS_THERAPY) {
                 Arbiter::set_state(SYS_IDLE);
                 Log::logf(CAT_HEALTH, LOG_INFO, "[HEALTH] Therapy ended\n");
-                WebUI::push_event("status", "{\"system\":\"IDLE\"}");
+            }
+
+            if (Arbiter::get_state() != current) {
+                int mhr = -1;
+                char mhr_resp[32] = {};
+                uint16_t mhr_len = sizeof(mhr_resp);
+                if (Arbiter::send_cmd("G S #MHR", CMD_SRC_INTERNAL, CMD_PRIO_NORMAL,
+                                      mhr_resp, &mhr_len)) {
+                    const char *mv = qframe_response_value(mhr_resp);
+                    if (mv) mhr = (int)strtol(mv, nullptr, 16);
+                }
+                char buf[64];
+                snprintf(buf, sizeof(buf), "{\"system\":\"%s\",\"mhr\":%d}",
+                         system_state_name(Arbiter::get_state()), mhr);
+                WebUI::push_event("status", buf);
             }
         }
     } else {

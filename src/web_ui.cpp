@@ -147,8 +147,9 @@ static void handleStatus(AsyncWebServerRequest *request) {
     oxi_state_t oxi = OxiBle::get_state();
     const oxi_reading_t &r = OxiArbiter::get_reading();
 
-    int rop = -1;
+    int rop = -1, mhr = -1;
     readSetting("ROP", rop);
+    readSetting("MHR", mhr);
 
     char dac_resp[32] = {}, tic_resp[32] = {};
     uint16_t dac_len = sizeof(dac_resp), tic_len = sizeof(tic_resp);
@@ -198,6 +199,7 @@ static void handleStatus(AsyncWebServerRequest *request) {
     jsonAddInt(json, "pulse", r.valid ? r.pulse_bpm : -1);
     jsonAddInt(json, "heap", ESP.getFreeHeap());
     jsonAddInt(json, "rssi", WiFi.RSSI());
+    jsonAddInt(json, "mhr", mhr);
     jsonAddInt(json, "uptime", millis() / 1000);
     json += '}';
 
