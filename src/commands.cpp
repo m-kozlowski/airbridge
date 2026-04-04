@@ -176,6 +176,18 @@ void dispatch_command(const char *line, String &response) {
         return;
     }
 
+    if (upper == "RESETREASON") {
+        esp_reset_reason_t reason = esp_reset_reason();
+        const char *names[] = {
+            "UNKNOWN","POWERON","EXT","SW","PANIC",
+            "INT_WDT","TASK_WDT","WDT","DEEPSLEEP",
+            "BROWNOUT","SDIO","USB","JTAG","EFUSE","PWR_GLITCH","CPU_LOCKUP"
+        };
+        const char *name = (reason < sizeof(names)/sizeof(names[0])) ? names[reason] : "?";
+        response = "reset reason: " + String(name) + " (" + String(reason) + ")\n";
+        return;
+    }
+
     if (upper == "LOG" || upper.startsWith("LOG ")) {
         String sub = upper.substring(3);
         sub.trim();
@@ -357,6 +369,7 @@ void dispatch_command(const char *line, String &response) {
                    "  LOG [cat] level     Set log level (cats: OXI TCP OTA WEB ARB HEALTH ALL)\n"
                    "  TRANSPARENT         Enter raw UART mode\n"
                    "  VERSION             Firmware version info\n"
+                   "  RESETREASON         Last reset reason\n"
                    "  REBOOT              Restart ESP32\n"
                    "  HELP                This help\n"
                    "Anything without $ prefix is sent to AirSense.\n";
