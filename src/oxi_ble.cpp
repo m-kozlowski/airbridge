@@ -346,9 +346,11 @@ void OxiBle::task(void *param) {
                 }
 
                 NimBLEAddress bleAddr(std::string(addr.c_str()), atype);
-                bool ok = false;
+                bool connected = false;
 
                 for (int attempt = 1; attempt <= max_attempts; attempt++) {
+                    if (disconnect_requested) break;
+
                     if (attempt > 1) {
                         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Retry %d/%d after %dms\n",
                                   attempt, max_attempts, USER_RETRY_DELAY_MS);
@@ -361,15 +363,16 @@ void OxiBle::task(void *param) {
                         pClient->disconnect();
                         vTaskDelay(pdMS_TO_TICKS(1000));
                     }
-                    // always cancel pending connect - even after disconnect
                     pClient->cancelConnect();
                     vTaskDelay(pdMS_TO_TICKS(500));
 
+                    // connect
+                    set_state(OXI_CONNECTING);
                     Log::logf(CAT_OXI, LOG_INFO, "[OXI] Connecting to %s (type=%d, %s, attempt %d/%d)...\n",
                               addr.c_str(), atype, mode == CONN_USER ? "user" : "auto",
                               attempt, max_attempts);
 
-                    ok = pClient->connect(bleAddr);
+                    bool ok = pClient->connect(bleAddr);
 
                     if (!ok) {
                         int err = pClient->getLastError();
@@ -382,7 +385,7 @@ void OxiBle::task(void *param) {
                                 vTaskDelay(pdMS_TO_TICKS(200));
                             ok = pClient->isConnected();
                             Log::logf(CAT_OXI, LOG_INFO, "[OXI] Pending connect %s\n", ok ? "succeeded" : "failed");
-                            if (ok) vTaskDelay(pdMS_TO_TICKS(500));  // settle before security
+                            if (ok) vTaskDelay(pdMS_TO_TICKS(500));
                         }
 
                         // EDONE: stale bond - delete and retry within this attempt
@@ -398,54 +401,53 @@ void OxiBle::task(void *param) {
                         }
                     }
 
-                    if (ok) break;
+                    if (!ok) continue;
 
-                    // check if disconnect was requested while we were retrying
-                    if (disconnect_requested) break;
-                }
-
-                if (ok) {
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Connected, initiating encryption\n");
+                    // encrypt
                     set_state(OXI_BONDING);
+                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Connected, initiating encryption\n");
 
-                    // secureConnection(false) blocks until encrypted or failure.
-                    // Nonin 3150 sends slave security request after 4s and disconnects 4s later
-                    // if still unencrypted, so this must complete within ~8s.
                     bool secured = pClient->secureConnection(false);
-                    int sec_err = pClient->getLastError();
                     Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Encryption: secure=%d connected=%d err=%d\n",
-                              secured, pClient->isConnected(), sec_err);
+                              secured, pClient->isConnected(), pClient->getLastError());
 
-                    // encryption failed
                     if (!secured && pClient->isConnected()) {
                         Log::logf(CAT_OXI, LOG_WARN, "[OXI] Encryption failed, disconnecting to retry\n");
                         pClient->disconnect();
                         vTaskDelay(pdMS_TO_TICKS(500));
-                        ok = false;
-                        if (disconnect_requested) break;
                         continue;
                     }
 
                     if (!pClient->isConnected()) {
                         Log::logf(CAT_OXI, LOG_WARN, "[OXI] Lost connection during encryption\n");
-                        ok = false;
-                        if (disconnect_requested) break;
                         continue;
                     }
 
-                    if (subscribe_services(pClient)) {
-                        set_nonin_datetime(pClient);
-                        set_state(OXI_STREAMING);
-                        OxiArbiter::set_source_id(pClient->getPeerAddress().toString().c_str());
-                        Log::logf(CAT_OXI, LOG_INFO, "[OXI] Streaming started\n");
-                    } else {
+                    // subscribe
+                    if (!subscribe_services(pClient)) {
                         Log::logf(CAT_OXI, LOG_WARN, "[OXI] No suitable services, disconnecting\n");
                         pClient->disconnect();
-                        set_state(OXI_DISCONNECTED);
+                        continue;
                     }
-                } else {
-                    Log::logf(CAT_OXI, LOG_WARN, "[OXI] Connect failed after %d attempt(s), backing off\n",
+
+                    // Final check - onDisconnect may have fired during subscribe
+                    if (!pClient->isConnected()) {
+                        Log::logf(CAT_OXI, LOG_WARN, "[OXI] Connection lost after subscribe\n");
+                        continue;
+                    }
+
+                    set_nonin_datetime(pClient);
+                    OxiArbiter::set_source_id(pClient->getPeerAddress().toString().c_str());
+                    set_state(OXI_STREAMING);
+                    Log::logf(CAT_OXI, LOG_INFO, "[OXI] Streaming started\n");
+                    connected = true;
+                    break;
+                }
+
+                if (!connected) {
+                    Log::logf(CAT_OXI, LOG_WARN, "[OXI] Connect sequence failed after %d attempt(s)\n",
                               max_attempts);
+                    if (pClient->isConnected()) pClient->disconnect();
                     set_state(OXI_DISCONNECTED);
                     last_reconnect = millis();
                 }
