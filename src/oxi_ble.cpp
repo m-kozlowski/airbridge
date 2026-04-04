@@ -452,8 +452,9 @@ void OxiBle::task(void *param) {
             }
         }
 
-        // Auto-reconnect: scan periodically when disconnected
+        // Auto-reconnect: scan periodically when disconnected and no other source active
         if (state == OXI_DISCONNECTED && cfg.oxi_enabled &&
+            OxiArbiter::active_source() == OXI_SRC_NONE &&
             millis() - last_reconnect > RECONNECT_DELAY_MS) {
             last_reconnect = millis();
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Auto-reconnect: starting scan\n");

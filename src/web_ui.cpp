@@ -8,6 +8,7 @@
 #include "debug_log.h"
 #include "app_config.h"
 #include "wifi.h"
+#include "crc16.h"
 
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
@@ -377,6 +378,7 @@ static void handlePostConfig(AsyncWebServerRequest *request) {
 static const esp_partition_t *resmed_part = nullptr;
 size_t uploadSize = 0;
 static bool uploadOk = false;
+static uint16_t uploadCrc = 0xFFFF;
 
 static void handleUploadChunk(AsyncWebServerRequest *request, const String& filename,
                                size_t index, uint8_t *data, size_t len, bool final) {
@@ -384,6 +386,7 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
         Log::logf(CAT_WEB, LOG_INFO, "[WEB] Upload start: %s\n", filename.c_str());
         uploadSize = 0;
         uploadOk = false;
+        uploadCrc = 0xFFFF;
 
         resmed_part = ResmedOta::get_staging_partition();
         if (!resmed_part) {
@@ -415,6 +418,7 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
             uploadOk = false;
             return;
         }
+        uploadCrc = crc16_ccitt(data, len, uploadCrc);
         uploadSize += len;
     }
 
@@ -433,18 +437,8 @@ static void handleUploadDone(AsyncWebServerRequest *request) {
     jsonAddInt(json, "size", uploadSize);
 
     if (uploadOk && resmed_part && uploadSize > 0) {
-        uint32_t crc = 0;
-        uint8_t buf[256];
-        size_t offset = 0;
-        while (offset < uploadSize) {
-            size_t chunk = (uploadSize - offset > sizeof(buf)) ? sizeof(buf) : uploadSize - offset;
-            if (esp_partition_read(resmed_part, offset, buf, chunk) == ESP_OK) {
-                for (size_t i = 0; i < chunk; i++) crc = (crc << 1) ^ buf[i];
-            }
-            offset += chunk;
-        }
-        char hexcrc[12];
-        snprintf(hexcrc, sizeof(hexcrc), "%08X", crc);
+        char hexcrc[8];
+        snprintf(hexcrc, sizeof(hexcrc), "%04X", uploadCrc);
         jsonAddString(json, "crc", hexcrc);
 
         // Firmware verification
