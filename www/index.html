@@ -550,6 +550,8 @@ function updateBleFromPush(d) {
   var sp = document.getElementById('bleScanSpinner');
   if (sp) sp.style.display = st === 'SCANNING' ? 'inline-block' : 'none';
   if (lastBleState === 'SCANNING' && st !== 'SCANNING') loadBle();
+  if (lastBleState !== 'STREAMING' && st === 'STREAMING') loadBle();
+  if (lastBleState === 'STREAMING' && st !== 'STREAMING') loadBle();
   if (pendingConnect) {
     var msgEl = document.getElementById('bleMsg');
     if (st === 'STREAMING') {
@@ -947,9 +949,15 @@ async function loadBle() {
     sp.style.display = d.state === 'SCANNING' ? 'inline-block' : 'none';
     const dl = document.getElementById('bleDevices'); dl.innerHTML = '';
     if (d.devices && d.devices.length) {
+      var connAddr = (lastStatus.oxi_addr || '').toLowerCase();
+      var isConn = connAddr && (d.state === 'STREAMING' || d.state === 'BONDING');
       d.devices.forEach(dev => {
         const row = document.createElement('div'); row.className = 'row';
-        row.innerHTML = '<label><strong>'+(dev.name||'Unknown')+'</strong><br><small style="color:var(--text-dim)">'+dev.addr+' ('+dev.rssi+' dBm)</small></label><button class="btn btn-accent" onclick="bleConnect(\''+dev.addr+'\')">Connect</button>';
+        var active = isConn && dev.addr.toLowerCase() === connAddr;
+        var btn = active
+          ? '<span class="badge badge-streaming" style="padding:6px 14px">Connected</span>'
+          : '<button class="btn btn-accent" onclick="bleConnect(\''+dev.addr+'\')">Connect</button>';
+        row.innerHTML = '<label><strong>'+(dev.name||'Unknown')+'</strong><br><small style="color:var(--text-dim)">'+dev.addr+' ('+dev.rssi+' dBm)</small></label>' + btn;
         dl.appendChild(row);
       });
     } else {
