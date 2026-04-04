@@ -26,7 +26,7 @@ const esp_partition_t* ResmedOta::get_staging_partition() {
 
 
 static bool verify_block_crc(const esp_partition_t *part, size_t offset, size_t size) {
-    uint8_t buf[512];
+    uint8_t buf[128];
     uint16_t crc = 0xFFFF;
     size_t remaining = size;
     size_t pos = 0;

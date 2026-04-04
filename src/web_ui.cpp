@@ -542,7 +542,7 @@ static void handleLive(AsyncWebServerRequest *request) {
         live_running = true;
         live_head = 0;
         live_seq = 0;
-        xTaskCreatePinnedToCore(live_sampler_task, "live_sample", 4096,
+        xTaskCreatePinnedToCore(live_sampler_task, "live_sample", 6144,
                                 nullptr, 2, &live_task_handle, 1);
     }
 
@@ -591,7 +591,7 @@ static void handleLiveControl(AsyncWebServerRequest *request) {
             live_running = true;
             live_head = 0;
             live_seq = 0;
-            xTaskCreatePinnedToCore(live_sampler_task, "live_sample", 4096,
+            xTaskCreatePinnedToCore(live_sampler_task, "live_sample", 6144,
                                     nullptr, 2, &live_task_handle, 1);
         }
         request->send(200, "application/json", "{\"ok\":true,\"running\":true}");
