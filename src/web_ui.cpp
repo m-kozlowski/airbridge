@@ -13,6 +13,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <esp_partition.h>
+#include <esp_ota_ops.h>
 #include <time.h>
 #include <NimBLEDevice.h>
 extern "C" {
@@ -406,6 +407,12 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
     }
 
     if (resmed_part && uploadOk && len > 0) {
+        // reject ESP32 binaries uploaded to resmed slot
+        if (uploadSize == 0 && len > 0 && data[0] == 0xE9) {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] Rejected: ESP32 binary uploaded to ResMed slot\n");
+            uploadOk = false;
+            return;
+        }
         if (uploadSize + len > resmed_part->size) {
             Log::logf(CAT_WEB, LOG_ERROR, "[WEB] File too large for partition!\n");
             uploadOk = false;
@@ -1001,6 +1008,107 @@ static void handleReport(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json);
 }
 
+// ESP32 OTA
+static esp_ota_handle_t esp_ota_handle = 0;
+static const esp_partition_t *esp_ota_part = nullptr;
+
+static void handleEspOtaChunk(AsyncWebServerRequest *request, const String& filename,
+                               size_t index, uint8_t *data, size_t len, bool final) {
+    if (index == 0) {
+        if (ResmedOta::is_active()) {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] ESP OTA rejected: ResMed flash active\n");
+            uploadOk = false;
+            return;
+        }
+        Log::logf(CAT_WEB, LOG_INFO, "[WEB] ESP OTA start: %s\n", filename.c_str());
+        uploadSize = 0;
+        uploadOk = false;
+        uploadCrc = 0xFFFF;
+
+        esp_ota_part = esp_ota_get_next_update_partition(NULL);
+        if (!esp_ota_part) {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] No OTA partition found\n");
+            return;
+        }
+        Log::logf(CAT_WEB, LOG_INFO, "[WEB] OTA target: '%s' (0x%X, %u bytes)\n",
+                  esp_ota_part->label, esp_ota_part->address, esp_ota_part->size);
+
+        esp_err_t err = esp_ota_begin(esp_ota_part, OTA_SIZE_UNKNOWN, &esp_ota_handle);
+        if (err != ESP_OK) {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] esp_ota_begin failed: %s\n", esp_err_to_name(err));
+            esp_ota_part = nullptr;
+            Arbiter::set_state(SYS_IDLE);
+            return;
+        }
+        uploadOk = true;
+    }
+
+    if (esp_ota_part && uploadOk && len > 0) {
+        // validate esp binary magic on first data
+        if (uploadSize == 0 && len > 0 && data[0] != 0xE9) {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] Not an ESP32 binary (magic=0x%02X)\n", data[0]);
+            uploadOk = false;
+            esp_ota_abort(esp_ota_handle);
+            esp_ota_part = nullptr;
+            return;
+        }
+        if (uploadSize == 0) Arbiter::set_state(SYS_OTA_ESP);
+        esp_err_t err = esp_ota_write(esp_ota_handle, data, len);
+        if (err != ESP_OK) {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] esp_ota_write failed at %u: %s\n",
+                      uploadSize, esp_err_to_name(err));
+            uploadOk = false;
+            return;
+        }
+        uploadCrc = crc16_ccitt(data, len, uploadCrc);
+        uploadSize += len;
+    }
+
+    if (final && uploadOk) {
+        Log::logf(CAT_WEB, LOG_INFO, "[WEB] ESP OTA upload complete: %u bytes\n", uploadSize);
+    }
+}
+
+static void handleEspOtaDone(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+
+    String json = "{";
+    bool ok = false;
+
+    if (uploadOk && esp_ota_part) {
+        esp_err_t err = esp_ota_end(esp_ota_handle);
+        if (err == ESP_OK) {
+            err = esp_ota_set_boot_partition(esp_ota_part);
+            if (err == ESP_OK) {
+                ok = true;
+                Log::logf(CAT_WEB, LOG_INFO, "[WEB] ESP OTA OK, boot set to '%s'\n",
+                          esp_ota_part->label);
+            } else {
+                Log::logf(CAT_WEB, LOG_ERROR, "[WEB] set_boot_partition failed: %s\n",
+                          esp_err_to_name(err));
+            }
+        } else {
+            Log::logf(CAT_WEB, LOG_ERROR, "[WEB] esp_ota_end failed: %s\n", esp_err_to_name(err));
+            jsonAddString(json, "error", esp_err_to_name(err));
+        }
+    }
+
+    jsonAddString(json, "ok", ok ? "true" : "false", false);
+    jsonAddInt(json, "size", uploadSize);
+    char hexcrc[8];
+    snprintf(hexcrc, sizeof(hexcrc), "%04X", uploadCrc);
+    jsonAddString(json, "crc", hexcrc);
+    if (esp_ota_part)
+        jsonAddString(json, "partition", esp_ota_part->label);
+
+    esp_ota_handle = 0;
+    esp_ota_part = nullptr;
+    Arbiter::set_state(SYS_IDLE);
+
+    json += '}';
+    request->send(200, "application/json", json);
+}
+
 static void handleReboot(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
     request->send(200, "application/json", "{\"ok\":true}");
@@ -1074,6 +1182,7 @@ void WebUI::init(uint16_t port) {
     http->on("/api/flash/cancel", HTTP_POST, handleFlashCancel);
     http->on("/api/time", HTTP_POST, handleTimeAction, NULL, handleJsonBody);
     http->on("/api/report", HTTP_GET, handleReport);
+    http->on("/api/esp32/upload", HTTP_POST, handleEspOtaDone, handleEspOtaChunk);
     http->on("/api/reboot", HTTP_POST, handleReboot);
 
     DefaultHeaders::Instance().addHeader("Cache-Control", "no-store");

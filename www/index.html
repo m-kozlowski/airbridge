@@ -404,19 +404,60 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
 
       <!-- OTA UPLOAD -->
       <div class="pane" id="p-ota">
-        <div class="card">
-          <h3>ResMed Firmware Upload</h3>
-          <div class="upload-area" id="dropZone">
-            <p>Drag & drop firmware file here, or click to browse</p>
-            <input type="file" id="fileInput" style="display:none" accept=".bin,.img,.dat">
+
+        <!-- AirBridge OTA -->
+        <div class="card" style="border-left:3px solid var(--accent)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <div style="font-size:24px">&#9881;</div>
+            <div>
+              <div style="font-weight:600;font-size:15px">AirBridge Firmware</div>
+              <div style="font-size:12px;color:var(--text-dim)">ESP32-PICO-D4 &middot; <span id="espFwVer">--</span></div>
+            </div>
           </div>
-          <div class="progress" id="uploadProgress"><div class="bar" id="uploadBar"></div></div>
-          <div class="msg" id="uploadMsg"></div>
-          <div id="fileInfo" style="font-size:13px;color:var(--text-dim);margin-top:8px"></div>
-          <div id="fwWarnings" style="margin-top:8px"></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div class="upload-area" id="espDropZone" style="padding:24px;border-color:var(--accent)">
+                <p style="font-size:13px">Select firmware .bin<br><small style="color:var(--text-dim)">or drag and drop here</small></p>
+                <input type="file" id="espFileInput" style="display:none" accept=".bin">
+              </div>
+            </div>
+            <div>
+              <div id="espFileInfo" style="font-size:13px;color:var(--text-dim)"></div>
+              <div class="progress" id="espUploadProgress"><div class="bar" id="espUploadBar" style="background:var(--accent)"></div></div>
+              <div class="msg" id="espUploadMsg"></div>
+              <button class="btn btn-danger" id="btnEspReboot" onclick="espReboot()" style="display:none;margin-top:8px">Reboot to new firmware</button>
+            </div>
+          </div>
         </div>
-        <div class="card" id="flashCard" style="display:none">
-          <h3>Flash to Device</h3>
+
+        <!-- ResMed OTA -->
+        <div class="card" style="border-left:3px solid var(--orange)">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+            <div style="font-size:24px">&#9741;</div>
+            <div>
+              <div style="font-weight:600;font-size:15px">ResMed Firmware</div>
+              <div style="font-size:12px;color:var(--text-dim)">STM32F4 &middot; AirSense 10</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div class="upload-area" id="dropZone" style="padding:24px;border-color:var(--orange)">
+                <p style="font-size:13px">Select firmware image<br><small style="color:var(--text-dim)">or drag and drop here</small></p>
+                <input type="file" id="fileInput" style="display:none" accept=".bin,.img,.dat">
+              </div>
+            </div>
+            <div>
+              <div id="fileInfo" style="font-size:13px;color:var(--text-dim)"></div>
+              <div class="progress" id="uploadProgress"><div class="bar" id="uploadBar" style="background:var(--orange)"></div></div>
+              <div class="msg" id="uploadMsg"></div>
+              <div id="fwWarnings" style="margin-top:8px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ResMed Flash Controls (shown after upload) -->
+        <div class="card" id="flashCard" style="display:none;border-left:3px solid var(--orange)">
+          <h3 style="color:var(--orange)">Flash to ResMed</h3>
           <div class="row">
             <label>Block type</label>
             <select id="flashBlock">
@@ -438,10 +479,10 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
           </div>
           <div id="flashDetected" style="font-size:13px;color:var(--text-dim);padding:8px 0"></div>
           <div class="btn-group" style="justify-content:flex-end">
-            <button class="btn btn-accent" id="btnFlash" onclick="startFlash()">Flash</button>
+            <button class="btn" onclick="startFlash()" id="btnFlash" style="border-color:var(--orange);color:var(--orange)">Flash</button>
             <button class="btn btn-danger" id="btnFlashCancel" onclick="cancelFlash()" style="display:none">Cancel</button>
           </div>
-          <div class="progress" id="flashProgress" style="display:none"><div class="bar" id="flashBar"></div></div>
+          <div class="progress" id="flashProgress" style="display:none"><div class="bar" id="flashBar" style="background:var(--orange)"></div></div>
           <div id="flashPhase" style="font-size:13px;color:var(--text-dim);margin-top:4px"></div>
           <div class="msg" id="flashMsg"></div>
         </div>
@@ -619,7 +660,11 @@ function showTab(id) {
   if (id === 'bluetooth') loadBle();
   if (id === 'console') document.getElementById('cmdInput').focus();
   if (id === 'device' && !document.getElementById('configFields').children.length) loadConfig();
-  if (id === 'ota') checkFlashReady();
+  if (id === 'ota') {
+    checkFlashReady();
+    var ev = document.getElementById('espFwVer');
+    if (ev && lastStatus.version) ev.textContent = lastStatus.version + (lastStatus.built ? ' (' + lastStatus.built + ')' : '');
+  }
 }
 
 // Wire up nav clicks
@@ -1052,6 +1097,48 @@ dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dra
 dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
 dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); uploadFile(e.dataTransfer.files[0]); });
 fi.addEventListener('change', e => { if (e.target.files[0]) uploadFile(e.target.files[0]); });
+
+// ESP32 OTA
+const edz = document.getElementById('espDropZone'), efi = document.getElementById('espFileInput');
+edz.addEventListener('click', () => efi.click());
+edz.addEventListener('dragover', e => { e.preventDefault(); edz.classList.add('dragover'); });
+edz.addEventListener('dragleave', () => edz.classList.remove('dragover'));
+edz.addEventListener('drop', e => { e.preventDefault(); edz.classList.remove('dragover'); espUploadFile(e.dataTransfer.files[0]); });
+efi.addEventListener('change', e => { if (e.target.files[0]) espUploadFile(e.target.files[0]); });
+
+async function espUploadFile(file) {
+  var msgEl = document.getElementById('espUploadMsg');
+  document.getElementById('espFileInfo').textContent = file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)';
+  document.getElementById('btnEspReboot').style.display = 'none';
+  var prog = document.getElementById('espUploadProgress'), bar = document.getElementById('espUploadBar');
+  prog.style.display = 'block'; bar.style.width = '0%';
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = function(e) { if (e.lengthComputable) bar.style.width = (e.loaded/e.total*100)+'%'; };
+    xhr.onload = function() {
+      if (xhr.status === 200) {
+        var d = JSON.parse(xhr.responseText);
+        if (d.ok === 'true') {
+          showMsg(msgEl, 'Upload OK: ' + d.size + ' bytes to ' + (d.partition||'OTA') + '. Ready to reboot.', 'ok', 0);
+          document.getElementById('btnEspReboot').style.display = '';
+        } else {
+          showMsg(msgEl, 'Upload failed: ' + (d.error || 'invalid firmware image'), 'err');
+        }
+      } else {
+        showMsg(msgEl, 'Upload failed: ' + xhr.statusText, 'err');
+      }
+    };
+    xhr.onerror = function() { showMsg(msgEl, 'Upload error', 'err'); };
+    var fd = new FormData(); fd.append('firmware', file);
+    xhr.open('POST', '/api/esp32/upload'); xhr.send(fd);
+  } catch(e) { showMsg(msgEl, 'Error: ' + e.message, 'err'); }
+}
+
+async function espReboot() {
+  showMsg(document.getElementById('espUploadMsg'), 'Rebooting...', 'ok', 0);
+  document.getElementById('btnEspReboot').style.display = 'none';
+  try { await api('/api/reboot', {method:'POST'}); } catch(e) {}
+}
 
 function showFwWarnings(d) {
   const el = document.getElementById('fwWarnings'); el.innerHTML = '';
