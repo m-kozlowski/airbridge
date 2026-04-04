@@ -36,12 +36,13 @@ static volatile bool disconnect_requested = false;
 #define USER_CONNECT_RETRIES  3
 #define USER_RETRY_DELAY_MS   2000
 static volatile bool scan_complete = false;
-static String target_addr = "";
+static char target_addr[18] = "";
 
 static NimBLEClient *pClient = nullptr;
 
+static SemaphoreHandle_t scan_mutex = nullptr;
 static oxi_scan_result_t scan_results[MAX_SCAN_RESULTS];
-static int scan_result_count = 0;
+static volatile int scan_result_count = 0;
 
 
 static void plx_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
@@ -97,12 +98,15 @@ class OxiScanCB : public NimBLEScanCallbacks {
                        name.startsWith("O2Ring") ||
                        name.startsWith("CheckMe");
 
-        if (is_oxi && scan_result_count < MAX_SCAN_RESULTS) {
-            scan_results[scan_result_count].addr = dev->getAddress().toString().c_str();
-            scan_results[scan_result_count].name = name;
-            scan_results[scan_result_count].rssi = dev->getRSSI();
-            scan_results[scan_result_count].addr_type = dev->getAddress().getType();
-            scan_result_count++;
+        if (is_oxi && scan_mutex && xSemaphoreTake(scan_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+            if (scan_result_count < MAX_SCAN_RESULTS) {
+                scan_results[scan_result_count].addr = dev->getAddress().toString().c_str();
+                scan_results[scan_result_count].name = name;
+                scan_results[scan_result_count].rssi = dev->getRSSI();
+                scan_results[scan_result_count].addr_type = dev->getAddress().getType();
+                scan_result_count++;
+            }
+            xSemaphoreGive(scan_mutex);
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Found: %s (%s) RSSI=%d\n",
                           name.c_str(), dev->getAddress().toString().c_str(), dev->getRSSI());
         }
@@ -161,15 +165,13 @@ static bool subscribe_services(NimBLEClient *cl) {
     NimBLERemoteService *plxSvc = cl->getService(PLX_SERVICE_UUID);
     if (plxSvc) {
         NimBLERemoteCharacteristic *plxCont = plxSvc->getCharacteristic(PLX_CONTINUOUS_UUID);
-        if (plxCont && plxCont->canNotify()) {
-            plxCont->subscribe(true, plx_notify_cb);
+        if (plxCont && plxCont->canNotify() && plxCont->subscribe(true, plx_notify_cb)) {
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Subscribed PLX Continuous\n");
             got_spo2 = got_hr = true;
         }
         if (!got_spo2) {
             NimBLERemoteCharacteristic *plxSpot = plxSvc->getCharacteristic(PLX_SPOT_UUID);
-            if (plxSpot && plxSpot->canIndicate()) {
-                plxSpot->subscribe(false, plx_notify_cb);
+            if (plxSpot && plxSpot->canIndicate() && plxSpot->subscribe(false, plx_notify_cb)) {
                 Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Subscribed PLX Spot\n");
                 got_spo2 = got_hr = true;
             }
@@ -180,8 +182,7 @@ static bool subscribe_services(NimBLEClient *cl) {
         NimBLERemoteService *noninSvc = cl->getService(NONIN_OXI_SERVICE_UUID);
         if (noninSvc) {
             NimBLERemoteCharacteristic *noninCont = noninSvc->getCharacteristic(NONIN_CONTINUOUS_UUID);
-            if (noninCont && noninCont->canNotify()) {
-                noninCont->subscribe(true, nonin_notify_cb);
+            if (noninCont && noninCont->canNotify() && noninCont->subscribe(true, nonin_notify_cb)) {
                 Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Subscribed Nonin Continuous\n");
                 got_spo2 = got_hr = true;
             }
@@ -192,8 +193,7 @@ static bool subscribe_services(NimBLEClient *cl) {
         NimBLERemoteService *hrSvc = cl->getService(HR_SERVICE_UUID);
         if (hrSvc) {
             NimBLERemoteCharacteristic *hrMeas = hrSvc->getCharacteristic(HR_MEASUREMENT_UUID);
-            if (hrMeas && hrMeas->canNotify()) {
-                hrMeas->subscribe(true, hr_notify_cb);
+            if (hrMeas && hrMeas->canNotify() && hrMeas->subscribe(true, hr_notify_cb)) {
                 Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Subscribed Heart Rate\n");
                 got_hr = true;
             }
@@ -239,6 +239,7 @@ static void set_nonin_datetime(NimBLEClient *cl) {
 
 
 void OxiBle::task(void *param) {
+    scan_mutex = xSemaphoreCreateMutex();
     NimBLEDevice::init(Config::get().hostname.c_str());
     NimBLEDevice::setSecurityAuth(true, false, false);
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
@@ -305,7 +306,9 @@ void OxiBle::task(void *param) {
 
         if (scan_requested) {
             scan_requested = false;
+            if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
             scan_result_count = 0;
+            if (scan_mutex) xSemaphoreGive(scan_mutex);
             scan_complete = false;
             set_state(OXI_SCANNING);
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Starting scan (%dms)\n", SCAN_DURATION_MS);
@@ -480,7 +483,8 @@ void OxiBle::start_scan()  { scan_requested = true; }
 void OxiBle::stop_scan()   { NimBLEDevice::getScan()->stop(); }
 
 void OxiBle::connect(const char *addr) {
-    target_addr = addr ? addr : "";
+    strncpy(target_addr, addr ? addr : "", sizeof(target_addr) - 1);
+    target_addr[sizeof(target_addr) - 1] = '\0';
     connect_mode = CONN_USER;
 }
 
@@ -489,6 +493,8 @@ oxi_state_t OxiBle::get_state()            { return state; }
 bool OxiBle::state_changed()               { bool d = state_dirty; state_dirty = false; return d; }
 
 const oxi_scan_result_t *OxiBle::get_scan_results(int &count) {
+    if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
     count = scan_result_count;
+    if (scan_mutex) xSemaphoreGive(scan_mutex);
     return scan_results;
 }
