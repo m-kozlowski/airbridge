@@ -32,7 +32,7 @@ Both support serial (`-p /dev/ttyUSB0`) and TCP (`-p tcp:hostname`) with `--tcp-
 
 | Status & live waveforms | Sleep report | Therapy settings | BLE management | Firmware upload |
 |---|---|---|---|---|
-| ![Status](docs/screenshots/status.png) | ![Report](docs/screenshots/report.png) | ![Clinical](docs/screenshots/clinical.png) | ![Bluetooth](docs/screenshots/bluetooth.png) | ![OTA](docs/screenshots/ota.png) |
+| ![Status](docs/screenshots/dashboard.png) | ![Report](docs/screenshots/report.png) | ![Clinical](docs/screenshots/clinical.png) | ![Bluetooth](docs/screenshots/bluetooth.png) | ![OTA](docs/screenshots/ota.png) |
 
 ## License
 
