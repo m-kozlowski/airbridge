@@ -132,8 +132,8 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Bottom nav (mobile) */
-.bottom-nav{display:none;background:var(--surface);border-top:1px solid var(--border);justify-content:space-around;padding:8px 0;position:fixed;bottom:0;left:0;right:0;z-index:100}
-.bottom-nav .bnav-item{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text-dim);cursor:pointer;padding:4px 8px;text-decoration:none}
+.bottom-nav{display:none;background:var(--surface);border-top:1px solid var(--border);justify-content:flex-start;padding:8px 0;position:fixed;bottom:0;left:0;right:0;z-index:100;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.bottom-nav .bnav-item{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text-dim);cursor:pointer;padding:4px 10px;text-decoration:none;flex-shrink:0;white-space:nowrap}
 .bottom-nav .bnav-item .icon{font-size:18px}
 .bottom-nav .bnav-item.active{color:var(--accent)}
 
@@ -496,9 +496,13 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
 <nav class="bottom-nav">
   <a class="bnav-item active" data-tab="status"><span class="icon">&#9878;</span>Home</a>
   <a class="bnav-item" data-tab="report"><span class="icon">&#9776;</span>Report</a>
+  <a class="bnav-item" data-tab="patient"><span class="icon">&#9883;</span>Patient</a>
+  <a class="bnav-item" data-tab="clinical"><span class="icon">&#9881;</span>Clinical</a>
+  <a class="bnav-item" data-tab="climate"><span class="icon">&#9729;</span>Climate</a>
   <a class="bnav-item" data-tab="bluetooth"><span class="icon">&#9829;</span>Oxi</a>
   <a class="bnav-item" data-tab="console"><span class="icon">&#9002;</span>CLI</a>
   <a class="bnav-item" data-tab="device"><span class="icon">&#9881;</span>Config</a>
+  <a class="bnav-item" data-tab="ota"><span class="icon">&#8679;</span>OTA</a>
 </nav>
 
 <!-- Toast container -->
