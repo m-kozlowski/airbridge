@@ -941,8 +941,9 @@ async function loadConfig() {
       }
       var row = document.createElement('div'); row.className = 'row';
       var isPass = k.includes('pass');
-      row.innerHTML = '<label>' + k + (meta[1] ? '<br><small style="color:#555;font-weight:normal">' + meta[1] + '</small>' : '') + '</label><input type="' + (isPass ? 'password' : 'text') + '" data-key="' + k + '" value="' + (isPass ? '' : v) + '">';
+      row.innerHTML = '<label>' + k + (meta[1] ? '<br><small style="color:#555;font-weight:normal">' + meta[1] + '</small>' : '') + '</label><input type="' + (isPass ? 'password' : 'text') + '" data-key="' + k + '" data-orig="' + (isPass ? '' : v) + '"' + (isPass ? ' placeholder="(unchanged)" data-pass="1"' : '') + ' value="' + (isPass ? '' : v) + '">';
       el.appendChild(row);
+      if (isPass) row.querySelector('input').addEventListener('input', function() { this.setAttribute('data-dirty', '1'); this.placeholder = '(empty = remove)'; });
       if (k === 'tz') attachTzHelper(row.querySelector('input'));
     }
   } catch(e) { console.error(e); }
@@ -951,7 +952,13 @@ async function loadConfig() {
 
 async function saveConfig() {
   const changes = {};
-  document.querySelectorAll('#configFields [data-key]').forEach(inp => { if (inp.value !== '') changes[inp.dataset.key] = inp.value; });
+  document.querySelectorAll('#configFields [data-key]').forEach(inp => {
+    if (inp.dataset.pass) {
+      if (inp.getAttribute('data-dirty')) changes[inp.dataset.key] = inp.value;
+    } else {
+      if (inp.value !== inp.dataset.orig) changes[inp.dataset.key] = inp.value;
+    }
+  });
   const msgEl = document.getElementById('configMsg');
   if (!Object.keys(changes).length) { showMsg(msgEl, 'No changes', 'ok'); return; }
   try {
