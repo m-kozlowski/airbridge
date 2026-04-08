@@ -1,5 +1,5 @@
 #include "qframe.h"
-#include "crc16.h"
+#include "crc.h"
 #include <string.h>
 
 int hex_nibble(uint8_t c) {

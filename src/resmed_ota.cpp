@@ -1,7 +1,7 @@
 #include "resmed_ota.h"
 #include "uart_arbiter.h"
 #include "qframe.h"
-#include "crc16.h"
+#include "crc.h"
 #include "debug_log.h"
 #include "app_config.h"
 #include <esp_partition.h>

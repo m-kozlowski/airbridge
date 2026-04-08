@@ -4,6 +4,7 @@
 #include "uart_arbiter.h"
 #include "debug_log.h"
 #include "app_config.h"
+#include "crc.h"
 
 #include <NimBLEDevice.h>
 

@@ -8,7 +8,7 @@
 #include "debug_log.h"
 #include "app_config.h"
 #include "wifi.h"
-#include "crc16.h"
+#include "crc.h"
 
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>

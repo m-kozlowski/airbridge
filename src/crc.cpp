@@ -1,6 +1,6 @@
-#include "crc16.h"
+#include "crc.h"
 
-static const uint16_t crc_table[256] = {
+static const uint16_t crc16_table[256] = {
     0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7,
     0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF,
     0x1231, 0x0210, 0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6,
@@ -37,6 +37,15 @@ static const uint16_t crc_table[256] = {
 
 uint16_t crc16_ccitt(const uint8_t *data, size_t len, uint16_t crc) {
     for (size_t i = 0; i < len; i++)
-        crc = (crc << 8) ^ crc_table[((crc >> 8) ^ data[i]) & 0xFF];
+        crc = (crc << 8) ^ crc16_table[((crc >> 8) ^ data[i]) & 0xFF];
+    return crc;
+}
+
+uint8_t crc8_ccitt(const uint8_t *data, size_t len, uint8_t crc) {
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int b = 0; b < 8; b++)
+            crc = (crc & 0x80) ? (crc << 1) ^ 0x07 : crc << 1;
+    }
     return crc;
 }
