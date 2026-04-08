@@ -24,6 +24,11 @@ static const NimBLEUUID NONIN_OXI_SERVICE_UUID("46A970E0-0D5F-11E2-8B5E-0002A5D5
 static const NimBLEUUID NONIN_CONTINUOUS_UUID("0AAD7EA0-0D60-11E2-8E3C-0002A5D5C51B");
 static const NimBLEUUID NONIN_CONTROL_POINT_UUID("1447AF80-0D60-11E2-88B6-0002A5D5C51B");
 
+// Wellue/Viatom proprietary (O2Ring, CheckmeO2, SleepU, O2M)
+static const NimBLEUUID VIATOM_SERVICE_UUID("14839AC4-7D7E-415C-9A42-167340CF2339");
+static const NimBLEUUID VIATOM_READ_UUID("0734594A-A8E7-4B1A-A6B1-CD5243059A57");
+static const NimBLEUUID VIATOM_WRITE_UUID("8B00ACE7-EB0B-49B0-BBE9-9AEE0A26E1A3");
+
 static TaskHandle_t oxi_task_handle = nullptr;
 static volatile oxi_state_t state = OXI_DISABLED;
 static volatile bool state_dirty = false;
@@ -45,6 +50,7 @@ static NimBLEClient *pClient = nullptr;
 static SemaphoreHandle_t scan_mutex = nullptr;
 static oxi_scan_result_t scan_results[MAX_SCAN_RESULTS];
 static volatile int scan_result_count = 0;
+static bool device_needs_encryption = false;  // Nonin needs it, Viatom/O2Ring don't
 
 
 static void plx_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
@@ -90,15 +96,55 @@ static void nonin_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size
 }
 
 
+// Viatom/Wellue: response packet header is 7 bytes (0x55, cmd, ~cmd, blk_lo, blk_hi, len_lo, len_hi)
+// CMD_READ_SENSORS response: payload byte 0 = SpO2, byte 1 = HR
+static NimBLERemoteCharacteristic *viatom_write_chr = nullptr;
+static uint8_t viatom_invalid_count = 0;
+#define VIATOM_MAX_INVALID  15  // disconnect after 15 invalid readings (~30s)
+
+static void viatom_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
+    // debug
+    if (len > 0) {
+        char hex[64] = {};
+        int n = len > 20 ? 20 : len;
+        for (int i = 0; i < n; i++) snprintf(hex + i*3, 4, "%02X ", data[i]);
+        Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Viatom RX len=%d: %s\n", len, hex);
+    }
+
+    // Response: 55 CMD ~CMD BLK_LO BLK_HI LEN_LO LEN_HI [payload...]
+    // Byte 7 = SpO2, Byte 8 = HR, 0xFF = no finger, 0x00 = no reading
+    if (len >= 9 && data[0] == 0x55) {
+        uint8_t spo2 = data[7];
+        uint8_t hr = data[8];
+        bool no_finger = (spo2 == 0 || spo2 == 0xFF || hr == 0 || hr == 0xFF);
+        if (!no_finger && spo2 <= 100 && hr < 250) {
+            OxiArbiter::feed(OXI_SRC_BLE, (int8_t)spo2, (int16_t)hr, true);
+            viatom_invalid_count = 0;
+        } else {
+            OxiArbiter::feed(OXI_SRC_BLE, -1, -1, false);
+            if (++viatom_invalid_count >= VIATOM_MAX_INVALID) {
+                Log::logf(CAT_OXI, LOG_INFO, "[OXI] Viatom: no valid data for %d readings, disconnecting\n",
+                          VIATOM_MAX_INVALID);
+                disconnect_requested = true;
+            }
+        }
+    }
+}
+
 class OxiScanCB : public NimBLEScanCallbacks {
     void onResult(const NimBLEAdvertisedDevice *dev) override {
         String name = dev->getName().c_str();
         bool is_oxi = dev->isAdvertisingService(PLX_SERVICE_UUID) ||
                        dev->isAdvertisingService(NONIN_OXI_SERVICE_UUID) ||
                        dev->isAdvertisingService(HR_SERVICE_UUID) ||
+                       dev->isAdvertisingService(VIATOM_SERVICE_UUID) ||
                        name.startsWith("Nonin") ||
                        name.startsWith("O2Ring") ||
-                       name.startsWith("CheckMe");
+                       name.startsWith("O2M") ||
+                       name.startsWith("CheckMe") ||
+                       name.startsWith("Checkme") ||
+                       name.startsWith("CheckO2") ||
+                       name.startsWith("SleepU");
 
         if (is_oxi && scan_mutex && xSemaphoreTake(scan_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             if (scan_result_count < MAX_SCAN_RESULTS) {
@@ -129,6 +175,7 @@ class OxiClientCB : public NimBLEClientCallbacks {
 
     void onDisconnect(NimBLEClient *client, int reason) override {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Disconnected (reason=0x%X)\n", reason);
+        viatom_write_chr = nullptr;
         OxiArbiter::stop_feed();
         if (state == OXI_STREAMING || state == OXI_BONDING) {
             set_state(OXI_DISCONNECTED);
@@ -191,6 +238,20 @@ static bool subscribe_services(NimBLEClient *cl) {
         }
     }
 
+    if (!got_spo2) {
+        NimBLERemoteService *viatomSvc = cl->getService(VIATOM_SERVICE_UUID);
+        if (viatomSvc) {
+            NimBLERemoteCharacteristic *viatomRead = viatomSvc->getCharacteristic(VIATOM_READ_UUID);
+            if (viatomRead && viatomRead->canNotify() && viatomRead->subscribe(true, viatom_notify_cb)) {
+                Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Subscribed Viatom read\n");
+                viatom_invalid_count = 0;
+                viatom_write_chr = viatomSvc->getCharacteristic(VIATOM_WRITE_UUID);
+                if (viatom_write_chr) Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Viatom write chr found\n");
+                got_spo2 = got_hr = true;
+            }
+        }
+    }
+
     if (!got_hr) {
         NimBLERemoteService *hrSvc = cl->getService(HR_SERVICE_UUID);
         if (hrSvc) {
@@ -236,6 +297,39 @@ static void set_nonin_datetime(NimBLEClient *cl) {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Nonin datetime set: %s\n", ts);
     } else {
         Log::logf(CAT_OXI, LOG_WARN, "[OXI] Nonin datetime write failed\n");
+    }
+}
+
+static void set_viatom_datetime() {
+    if (!WiFiSetup::time_synced() || !viatom_write_chr) return;
+
+    struct tm t;
+    time_t now = time(nullptr);
+    localtime_r(&now, &t);
+
+    // json {"SetTIME":"YYYY-MM-DD,HH:MM:SS"}
+    char json[48];
+    strftime(json, sizeof(json), "{\"SetTIME\":\"%Y-%m-%d,%H:%M:%S\"}", &t);
+    int json_len = strlen(json);
+
+    // AA CMD ~CMD BLK_LO BLK_HI LEN_LO LEN_HI [json] CRC8
+    int pkt_len = 7 + json_len + 1;
+    uint8_t pkt[64];
+    pkt[0] = 0xAA;
+    pkt[1] = 0x16;  // CMD_CONFIG
+    pkt[2] = 0x16 ^ 0xFF;
+    pkt[3] = 0x00; pkt[4] = 0x00;  // block
+    pkt[5] = json_len & 0xFF;
+    pkt[6] = (json_len >> 8) & 0xFF;
+    memcpy(pkt + 7, json, json_len);
+
+    uint8_t crc = crc8_ccitt(pkt, 7 + json_len);
+    pkt[7 + json_len] = crc;
+
+    if (viatom_write_chr->writeValue(pkt, pkt_len, false)) {
+        Log::logf(CAT_OXI, LOG_INFO, "[OXI] Viatom datetime set: %s\n", json);
+    } else {
+        Log::logf(CAT_OXI, LOG_WARN, "[OXI] Viatom datetime write failed\n");
     }
 }
 
@@ -352,12 +446,17 @@ void OxiBle::task(void *param) {
                 set_state(OXI_CONNECTING);
 
                 uint8_t atype = 1;
+                String dev_name = "";
                 for (int i = 0; i < scan_result_count; i++) {
                     if (scan_results[i].addr.equalsIgnoreCase(addr)) {
                         atype = scan_results[i].addr_type;
+                        dev_name = scan_results[i].name;
                         break;
                     }
                 }
+
+                // Nonin requires Just Works bonding; Viatom/O2Ring/generic PLX do not
+                device_needs_encryption = dev_name.startsWith("Nonin");
 
                 NimBLEAddress bleAddr(std::string(addr.c_str()), atype);
                 bool connected = false;
@@ -417,24 +516,28 @@ void OxiBle::task(void *param) {
 
                     if (!ok) continue;
 
-                    // encrypt
-                    set_state(OXI_BONDING);
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Connected, initiating encryption\n");
+                    // encrypt for devices that require it 
+                    if (device_needs_encryption) {
+                        set_state(OXI_BONDING);
+                        Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Initiating encryption\n");
 
-                    bool secured = pClient->secureConnection(false);
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Encryption: secure=%d connected=%d err=%d\n",
-                              secured, pClient->isConnected(), pClient->getLastError());
+                        bool secured = pClient->secureConnection(false);
+                        Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Encryption: secure=%d connected=%d err=%d\n",
+                                  secured, pClient->isConnected(), pClient->getLastError());
 
-                    if (!secured && pClient->isConnected()) {
-                        Log::logf(CAT_OXI, LOG_WARN, "[OXI] Encryption failed, disconnecting to retry\n");
-                        pClient->disconnect();
-                        vTaskDelay(pdMS_TO_TICKS(500));
-                        continue;
-                    }
+                        if (!pClient->isConnected()) {
+                            Log::logf(CAT_OXI, LOG_WARN, "[OXI] Lost connection during encryption\n");
+                            continue;
+                        }
 
-                    if (!pClient->isConnected()) {
-                        Log::logf(CAT_OXI, LOG_WARN, "[OXI] Lost connection during encryption\n");
-                        continue;
+                        if (!secured) {
+                            Log::logf(CAT_OXI, LOG_WARN, "[OXI] Encryption failed, disconnecting to retry\n");
+                            pClient->disconnect();
+                            vTaskDelay(pdMS_TO_TICKS(500));
+                            continue;
+                        }
+                    } else {
+                        Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Skipping encryption (not required)\n");
                     }
 
                     // subscribe
@@ -451,6 +554,7 @@ void OxiBle::task(void *param) {
                     }
 
                     set_nonin_datetime(pClient);
+                    set_viatom_datetime();
                     OxiArbiter::set_source_id(pClient->getPeerAddress().toString().c_str());
                     set_state(OXI_STREAMING);
                     Log::logf(CAT_OXI, LOG_INFO, "[OXI] Streaming started\n");
@@ -475,6 +579,18 @@ void OxiBle::task(void *param) {
             last_reconnect = millis();
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Auto-reconnect: starting scan\n");
             scan_requested = true;
+        }
+
+        // Viatom: poll sensor readings every 2s while streaming
+        if (state == OXI_STREAMING && viatom_write_chr && pClient->isConnected()) {
+            static uint32_t last_viatom_poll = 0;
+            if (millis() - last_viatom_poll >= 2000) {
+                last_viatom_poll = millis();
+                // CMD_READ_SENSORS packet: AA 17 E8 00 00 00 00 CRC
+                uint8_t cmd[] = {0xAA, 0x17, 0xE8, 0x00, 0x00, 0x00, 0x00, 0x00};
+                cmd[7] = crc8_ccitt(cmd, 7);
+                viatom_write_chr->writeValue(cmd, sizeof(cmd), false);
+            }
         }
 
         // Arbiter handles injection timing and source gating
