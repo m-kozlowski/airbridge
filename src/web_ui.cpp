@@ -676,6 +676,14 @@ static void handleBleAction(AsyncWebServerRequest *request) {
         OxiBle::disconnect();
         result = "disconnected";
         ok = true;
+    } else if (action == "enable") {
+        OxiBle::enable();
+        result = "oximetry enabled";
+        ok = true;
+    } else if (action == "disable") {
+        OxiBle::disable();
+        result = "oximetry disabled";
+        ok = true;
     } else if (action == "start_feed") {
         OxiArbiter::start_feed();
         result = "feeding started";

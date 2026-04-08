@@ -359,6 +359,7 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
           <div class="btn-group" style="justify-content:flex-end">
             <button class="btn btn-accent" id="btnFeed" onclick="bleAction('start_feed')">Start Feed</button>
             <button class="btn btn-danger" onclick="bleAction('disconnect')">Disconnect</button>
+            <button class="btn" id="btnOxiToggle" onclick="toggleOxi()">Disable</button>
             <button class="btn" onclick="loadBle()">Refresh</button>
           </div>
         </div>
@@ -983,6 +984,13 @@ function showMsg(el, text, type, timeout) {
 
 // BLE
 let bleTimer = null;
+function toggleOxi() {
+  var st = document.getElementById('bleStatusGrid');
+  var isDisabled = st && st.querySelector('[data-field="state"]') &&
+                   st.querySelector('[data-field="state"]').textContent === 'DISABLED';
+  bleAction(isDisabled ? 'enable' : 'disable');
+}
+
 async function loadBle() {
   try {
     const r = await api('/api/ble'); if (!r) return;
@@ -994,6 +1002,8 @@ async function loadBle() {
     const fb = document.getElementById('btnFeed');
     if (d.feeding === 'yes') { fb.textContent = 'Stop Feed'; fb.onclick = () => bleAction('stop_feed'); }
     else { fb.textContent = 'Start Feed'; fb.onclick = () => bleAction('start_feed'); }
+    var ot = document.getElementById('btnOxiToggle');
+    if (ot) ot.textContent = d.state === 'DISABLED' ? 'Enable' : 'Disable';
     const sp = document.getElementById('bleScanSpinner');
     sp.style.display = d.state === 'SCANNING' ? 'inline-block' : 'none';
     const dl = document.getElementById('bleDevices'); dl.innerHTML = '';

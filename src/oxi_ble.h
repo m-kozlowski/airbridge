@@ -40,6 +40,8 @@ namespace OxiBle {
     void stop_scan();
     void connect(const char *addr = nullptr);
     void disconnect();
+    void enable();
+    void disable();
 
     oxi_state_t get_state();
     bool state_changed();

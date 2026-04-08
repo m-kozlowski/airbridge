@@ -32,7 +32,8 @@ static oxi_reading_t reading = { -1, -1, false, 0 };  // local copy for callback
 static volatile bool scan_requested = false;
 typedef enum { CONN_NONE, CONN_AUTO, CONN_USER } connect_mode_t;
 static volatile connect_mode_t connect_mode = CONN_NONE;
-static volatile bool disconnect_requested = false;
+static volatile bool disconnect_requested = false;  // drop connection, stay enabled
+static volatile bool disable_requested = false;     // drop connection, disable scanning
 
 #define USER_CONNECT_RETRIES  3
 #define USER_RETRY_DELAY_MS   2000
@@ -258,12 +259,21 @@ void OxiBle::task(void *param) {
     uint32_t last_reconnect = 0;
 
     while (true) {
+        if (disable_requested) {
+            disable_requested = false;
+            disconnect_requested = false;
+            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Disable requested\n");
+            if (pClient->isConnected()) pClient->disconnect();
+            OxiArbiter::stop_feed();
+            set_state(OXI_DISABLED);
+        }
+
         if (disconnect_requested) {
             disconnect_requested = false;
             Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Disconnect requested\n");
             if (pClient->isConnected()) pClient->disconnect();
             OxiArbiter::stop_feed();
-            set_state(OXI_DISABLED);
+            set_state(OXI_DISCONNECTED);
         }
 
         if (scan_complete) {
@@ -353,7 +363,7 @@ void OxiBle::task(void *param) {
                 bool connected = false;
 
                 for (int attempt = 1; attempt <= max_attempts; attempt++) {
-                    if (disconnect_requested) break;
+                    if (disconnect_requested || disable_requested) break;
 
                     if (attempt > 1) {
                         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Retry %d/%d after %dms\n",
@@ -490,6 +500,13 @@ void OxiBle::connect(const char *addr) {
 }
 
 void OxiBle::disconnect()  { disconnect_requested = true; }
+void OxiBle::disable()     { disable_requested = true; }
+void OxiBle::enable() {
+    if (state == OXI_DISABLED) {
+        set_state(OXI_DISCONNECTED);
+        scan_requested = true;
+    }
+}
 oxi_state_t OxiBle::get_state()            { return state; }
 bool OxiBle::state_changed()               { bool d = state_dirty; state_dirty = false; return d; }
 

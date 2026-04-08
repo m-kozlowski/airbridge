@@ -92,6 +92,12 @@ void dispatch_command(const char *line, String &response) {
         } else if (sub == "DISCONNECT") {
             OxiBle::disconnect();
             response = "OK: disconnected\n";
+        } else if (sub == "ENABLE") {
+            OxiBle::enable();
+            response = "OK: oximetry enabled\n";
+        } else if (sub == "DISABLE") {
+            OxiBle::disable();
+            response = "OK: oximetry disabled\n";
         } else {
             response = "ERR: unknown OXI command: " + sub + "\n";
         }
@@ -360,6 +366,7 @@ void dispatch_command(const char *line, String &response) {
                    "  OXI RESULTS         Show scan results\n"
                    "  OXI CONNECT [addr]  Connect to oximeter\n"
                    "  OXI DISCONNECT      Disconnect oximeter\n"
+                   "  OXI ENABLE|DISABLE  Enable/disable oximetry\n"
                    "  CONFIG [key [val]]  Get/set config\n"
                    "  CONFIG SAVE|RESET   Save/reset config\n"
                    "  CONFIG DUMP         Show all config\n"
