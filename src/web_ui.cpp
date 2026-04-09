@@ -28,6 +28,7 @@ static AsyncEventSource *events = nullptr;
 
 static bool checkAuth(AsyncWebServerRequest *request) {
     auto &cfg = Config::get();
+    if (cfg.http_user.isEmpty() && cfg.http_pass.isEmpty()) return true;
     if (!request->authenticate(cfg.http_user.c_str(), cfg.http_pass.c_str())) {
         request->requestAuthentication();
         return false;
