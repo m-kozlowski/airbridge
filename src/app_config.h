@@ -16,6 +16,7 @@ struct AirBridgeConfig {
     String      oxi_device_addr;
     uint16_t    oxi_interval_ms;
     bool        oxi_lframe_continuous; // send L-frames even when no valid reading
+    bool        oxi_require_known;     // only auto-connect to bonded/known devices
 
     uint32_t    uart_baud;
     uint16_t    uart_cmd_timeout_ms;

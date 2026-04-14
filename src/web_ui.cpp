@@ -15,10 +15,6 @@
 #include <esp_partition.h>
 #include <esp_ota_ops.h>
 #include <time.h>
-#include <NimBLEDevice.h>
-extern "C" {
-#include "nimble/nimble/host/include/host/ble_store.h"
-}
 
 extern const char *airbridge_version();
 extern const char *airbridge_build_date();
@@ -629,12 +625,12 @@ static void handleBleStatus(AsyncWebServerRequest *request) {
         json += "}";
     }
     json += "],\"bonds\":[";
-    int numBonds = NimBLEDevice::getNumBonds();
-    for (int i = 0; i < numBonds; i++) {
+    char known_addrs[6][18];
+    int nk = OxiBle::get_all_known(known_addrs, 6);
+    for (int i = 0; i < nk; i++) {
         if (i > 0) json += ',';
-        NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
         json += '"';
-        json += ba.toString().c_str();
+        json += known_addrs[i];
         json += '"';
     }
     json += "]}";
@@ -695,63 +691,29 @@ static void handleBleAction(AsyncWebServerRequest *request) {
         ok = true;
     } else if (action == "delete_bond") {
         if (addr.length() > 0) {
-            int nb = NimBLEDevice::getNumBonds();
-            Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] Deleting bond for %s (%d bonds stored)\n", addr.c_str(), nb);
-            for (int i = 0; i < nb; i++) {
-                NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
-                Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   bond[%d]: %s type=%d\n", i, ba.toString().c_str(), ba.getType());
-            }
             OxiBle::stop_scan();
             OxiBle::disconnect();
             vTaskDelay(pdMS_TO_TICKS(500));
-            bool deleted = false;
-            for (int i = 0; i < nb && !deleted; i++) {
-                NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
-                if (strcasecmp(ba.toString().c_str(), addr.c_str()) == 0) {
-                    int rc = ble_gap_unpair(ba.getBase());
-                    deleted = (rc == 0);
-                    Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   match at [%d], unpair rc=%d, type=%d\n", i, rc, ba.getType());
-                }
-            }
-            /*
-            if (!deleted) {
-                // Fall back to clearing all bonds
-                Log::logf(CAT_OXI, LOG_DEBUG, "[BLE]   high-level delete failed, trying ble_store_clear\n");
-                ble_store_clear();
-                deleted = (NimBLEDevice::getNumBonds() == 0);
-            }
-            */
+            bool deleted = OxiBle::remove_known(addr.c_str());
             if (deleted && strcasecmp(addr.c_str(), Config::get().oxi_device_addr.c_str()) == 0) {
                 Config::set_value("oxi_device_addr", "");
                 Config::save();
-                Log::logf(CAT_OXI, LOG_INFO, "[BLE] Cleared oxi_device_addr (matched deleted bond)\n");
             }
-            result = deleted ? "bond deleted" : "bond not found";
+            result = deleted ? "device removed" : "device not found";
         } else {
             result = "no address specified";
         }
         ok = true;
     } else if (action == "delete_all_bonds") {
-        int nb = NimBLEDevice::getNumBonds();
-        Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] Deleting all %d bonds\n", nb);
         OxiBle::stop_scan();
         OxiBle::disconnect();
         vTaskDelay(pdMS_TO_TICKS(500));
-        NimBLEDevice::deleteAllBonds();
-        int remaining = NimBLEDevice::getNumBonds();
-        if (remaining > 0) {
-            // Fall back to low-level store clear
-            Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] High-level delete left %d, trying ble_store_clear\n", remaining);
-            ble_store_clear();
-            remaining = NimBLEDevice::getNumBonds();
-        }
-        Log::logf(CAT_OXI, LOG_DEBUG, "[BLE] After delete: %d bonds remain\n", remaining);
-        if (remaining == 0 && Config::get().oxi_device_addr.length() > 0) {
+        OxiBle::clear_all_known();
+        if (Config::get().oxi_device_addr.length() > 0) {
             Config::set_value("oxi_device_addr", "");
             Config::save();
-            Log::logf(CAT_OXI, LOG_INFO, "[BLE] Cleared oxi_device_addr\n");
         }
-        result = remaining == 0 ? "all bonds deleted" : "delete failed";
+        result = "all devices removed";
         ok = true;
     }
 

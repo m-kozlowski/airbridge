@@ -7,6 +7,7 @@
 #include "crc.h"
 
 #include <NimBLEDevice.h>
+#include <Preferences.h>
 
 #define OXI_TASK_STACK      4096
 #define OXI_TASK_PRIO       4
@@ -51,6 +52,87 @@ static SemaphoreHandle_t scan_mutex = nullptr;
 static oxi_scan_result_t scan_results[MAX_SCAN_RESULTS];
 static volatile int scan_result_count = 0;
 static bool device_needs_encryption = false;  // Nonin needs it, Viatom/O2Ring don't
+
+// Known devices list
+// For devices that don't use BLE bonding (O2Ring, CheckMe, etc.)
+#define KNOWN_MAX CONFIG_BT_NIMBLE_MAX_BONDS
+static char known_addrs[KNOWN_MAX][18] = {};
+static int known_count = 0;
+
+static void known_load() {
+    Preferences p;
+    p.begin("oxi_known", true);
+    known_count = p.getUChar("count", 0);
+    if (known_count > KNOWN_MAX) known_count = KNOWN_MAX;
+    for (int i = 0; i < known_count; i++) {
+        char key[4];
+        snprintf(key, sizeof(key), "a%d", i);
+        String a = p.getString(key, "");
+        strncpy(known_addrs[i], a.c_str(), 17);
+        known_addrs[i][17] = '\0';
+    }
+    p.end();
+    Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Loaded %d known devices\n", known_count);
+}
+
+static void known_save() {
+    Preferences p;
+    p.begin("oxi_known", false);
+    p.putUChar("count", known_count);
+    for (int i = 0; i < KNOWN_MAX; i++) {
+        char key[4];
+        snprintf(key, sizeof(key), "a%d", i);
+        if (i < known_count) p.putString(key, known_addrs[i]);
+        else p.remove(key);
+    }
+    p.end();
+}
+
+static bool known_contains(const char *addr) {
+    for (int i = 0; i < known_count; i++) {
+        if (strcasecmp(known_addrs[i], addr) == 0) return true;
+    }
+    return false;
+}
+
+static bool known_add(const char *addr) {
+    if (known_contains(addr)) return true;
+    if (known_count >= KNOWN_MAX) return false;
+    strncpy(known_addrs[known_count], addr, 17);
+    known_addrs[known_count][17] = '\0';
+    known_count++;
+    known_save();
+    Log::logf(CAT_OXI, LOG_INFO, "[OXI] Added known device: %s\n", addr);
+    return true;
+}
+
+static bool known_remove(const char *addr) {
+    for (int i = 0; i < known_count; i++) {
+        if (strcasecmp(known_addrs[i], addr) == 0) {
+            // Shift remaining entries
+            for (int j = i; j < known_count - 1; j++)
+                memcpy(known_addrs[j], known_addrs[j+1], 18);
+            known_count--;
+            known_save();
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Removed known device: %s\n", addr);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void known_clear() {
+    known_count = 0;
+    known_save();
+    Log::logf(CAT_OXI, LOG_INFO, "[OXI] Cleared all known devices\n");
+}
+
+// Check if a device is "known" (either NimBLE-bonded or in our known list)
+static bool is_device_known(const char *addr, uint8_t addr_type) {
+    NimBLEAddress ba(std::string(addr), addr_type);
+    if (NimBLEDevice::isBonded(ba)) return true;
+    return known_contains(addr);
+}
 
 
 static void plx_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
@@ -336,6 +418,7 @@ static void set_viatom_datetime() {
 
 void OxiBle::task(void *param) {
     scan_mutex = xSemaphoreCreateMutex();
+    known_load();
     NimBLEDevice::init(Config::get().hostname.c_str());
     NimBLEDevice::setSecurityAuth(true, false, false);
     NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
@@ -389,15 +472,19 @@ void OxiBle::task(void *param) {
                         if (!found) Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Target %s not in scan results\n", target.c_str());
                     } else {
                         for (int i = 0; i < scan_result_count; i++) {
-                            if (scan_results[i].name.startsWith("Nonin")) {
-                                NimBLEAddress ba(std::string(scan_results[i].addr.c_str()), scan_results[i].addr_type);
-                                bool bonded = NimBLEDevice::isBonded(ba);
-                                Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] %s %s bonded=%d\n",
-                                          scan_results[i].name.c_str(), scan_results[i].addr.c_str(), bonded);
-                                if (bonded) { found = true; break; }
+                            bool known = is_device_known(scan_results[i].addr.c_str(),
+                                                         scan_results[i].addr_type);
+                            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] %s %s known=%d\n",
+                                      scan_results[i].name.c_str(), scan_results[i].addr.c_str(), known);
+                            if (cfg.oxi_require_known) {
+                                if (known) { found = true; break; }
                             } else {
-                                found = true;
-                                break;
+                                if (scan_results[i].name.startsWith("Nonin")) {
+                                    if (known) { found = true; break; }
+                                } else {
+                                    found = true;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -558,6 +645,10 @@ void OxiBle::task(void *param) {
                     OxiArbiter::set_source_id(pClient->getPeerAddress().toString().c_str());
                     set_state(OXI_STREAMING);
                     Log::logf(CAT_OXI, LOG_INFO, "[OXI] Streaming started\n");
+
+                    if (mode == CONN_USER && !device_needs_encryption) {
+                        known_add(addr.c_str());
+                    }
                     connected = true;
                     break;
                 }
@@ -631,4 +722,54 @@ const oxi_scan_result_t *OxiBle::get_scan_results(int &count) {
     count = scan_result_count;
     if (scan_mutex) xSemaphoreGive(scan_mutex);
     return scan_results;
+}
+
+int OxiBle::get_all_known(char addrs[][18], int max) {
+    int n = 0;
+    // NimBLE bonds
+    int nb = NimBLEDevice::getNumBonds();
+    for (int i = 0; i < nb && n < max; i++) {
+        NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
+        strncpy(addrs[n], ba.toString().c_str(), 17);
+        addrs[n][17] = '\0';
+        n++;
+    }
+    // Known list (skip duplicates with bonds)
+    for (int i = 0; i < known_count && n < max; i++) {
+        bool dup = false;
+        for (int j = 0; j < n; j++) {
+            if (strcasecmp(addrs[j], known_addrs[i]) == 0) { dup = true; break; }
+        }
+        if (!dup) {
+            strncpy(addrs[n], known_addrs[i], 17);
+            addrs[n][17] = '\0';
+            n++;
+        }
+    }
+    return n;
+}
+
+bool OxiBle::remove_known(const char *addr) {
+    bool removed = false;
+    // Try NimBLE bond first
+    NimBLEDevice::getScan()->stop();
+    int nb = NimBLEDevice::getNumBonds();
+    for (int i = 0; i < nb; i++) {
+        NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
+        if (strcasecmp(ba.toString().c_str(), addr) == 0) {
+            int rc = ble_gap_unpair(ba.getBase());
+            if (rc == 0) removed = true;
+            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Unpair %s rc=%d\n", addr, rc);
+            break;
+        }
+    }
+    // Also remove from known list
+    if (known_remove(addr)) removed = true;
+    return removed;
+}
+
+void OxiBle::clear_all_known() {
+    NimBLEDevice::getScan()->stop();
+    NimBLEDevice::deleteAllBonds();
+    known_clear();
 }

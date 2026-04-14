@@ -23,6 +23,7 @@ static void apply_defaults() {
     cfg.oxi_device_addr = "";
     cfg.oxi_interval_ms = 500;
     cfg.oxi_lframe_continuous = true;
+    cfg.oxi_require_known = false;
 
     cfg.uart_baud = CFG_DEFAULT_BAUD;
     cfg.uart_cmd_timeout_ms = 500;
@@ -64,6 +65,7 @@ void Config::load() {
     cfg.oxi_device_addr = prefs.getString("oxi_devaddr", cfg.oxi_device_addr);
     cfg.oxi_interval_ms = prefs.getUShort("oxi_interval", cfg.oxi_interval_ms);
     cfg.oxi_lframe_continuous = prefs.getBool("oxi_lframe_cont", cfg.oxi_lframe_continuous);
+    cfg.oxi_require_known = prefs.getBool("oxi_req_known", cfg.oxi_require_known);
 
     cfg.uart_baud       = prefs.getULong("uart_baud", cfg.uart_baud);
     cfg.uart_cmd_timeout_ms = prefs.getUShort("uart_timeout", cfg.uart_cmd_timeout_ms);
@@ -98,6 +100,7 @@ void Config::save() {
     prefs.putString("oxi_devaddr", cfg.oxi_device_addr);
     prefs.putUShort("oxi_interval", cfg.oxi_interval_ms);
     prefs.putBool("oxi_lframe_cont", cfg.oxi_lframe_continuous);
+    prefs.putBool("oxi_req_known", cfg.oxi_require_known);
 
     prefs.putULong("uart_baud", cfg.uart_baud);
     prefs.putUShort("uart_timeout", cfg.uart_cmd_timeout_ms);
@@ -184,6 +187,7 @@ static const KVEntry kv_table[] = {
     KV_STR("oxi_device_addr", oxi_device_addr),
     KV_U16("oxi_interval_ms", oxi_interval_ms),
     KV_BOOL("oxi_lframe_continuous", oxi_lframe_continuous),
+    KV_BOOL("oxi_require_known", oxi_require_known),
     KV_U32("uart_baud", uart_baud),
     KV_U16("uart_cmd_timeout_ms", uart_cmd_timeout_ms),
     KV_U8("uart_max_retries", uart_max_retries),
