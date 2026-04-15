@@ -11,9 +11,16 @@ static AirBridgeConfig cfg;
 
 static void apply_defaults() {
     cfg.hostname = DEFAULT_HOSTNAME;
-    cfg.wifi_ssid = "";
-    cfg.wifi_pass = "";
+    cfg.wifi_net_count = 0;
+    for (int i = 0; i < WIFI_MAX_NETWORKS; i++) {
+        cfg.wifi_nets[i].ssid = "";
+        cfg.wifi_nets[i].pass = "";
+        memset(cfg.wifi_nets[i].bssid, 0, 6);
+        cfg.wifi_nets[i].channel = 0;
+        cfg.wifi_nets[i].enabled = false;
+    }
     cfg.wifi_mode = 1;                  // AP mode by default
+    cfg.wifi_roam = true;
     cfg.tcp_port = CFG_DEFAULT_TCP_PORT;
 
     cfg.oxi_enabled = true;
@@ -51,12 +58,49 @@ void Config::init() {
     prefs.begin("airbridge", false);
 }
 
+static void load_wifi_nets() {
+    Preferences wp;
+    wp.begin("wnet", true);
+    cfg.wifi_net_count = wp.getUChar("count", 0);
+    if (cfg.wifi_net_count > WIFI_MAX_NETWORKS) cfg.wifi_net_count = WIFI_MAX_NETWORKS;
+    for (int i = 0; i < cfg.wifi_net_count; i++) {
+        char key[14];
+        snprintf(key, sizeof(key), "ssid_%d", i);
+        cfg.wifi_nets[i].ssid = wp.getString(key, "");
+        snprintf(key, sizeof(key), "pass_%d", i);
+        cfg.wifi_nets[i].pass = wp.getString(key, "");
+        snprintf(key, sizeof(key), "bssid_%d", i);
+        wp.getBytes(key, cfg.wifi_nets[i].bssid, 6);
+        snprintf(key, sizeof(key), "chan_%d", i);
+        cfg.wifi_nets[i].channel = wp.getUChar(key, 0);
+        snprintf(key, sizeof(key), "ena_%d", i);
+        cfg.wifi_nets[i].enabled = wp.getBool(key, true);
+    }
+    wp.end();
+
+    // migrate from old single wifi_ssid/wifi_pass
+    if (cfg.wifi_net_count == 0) {
+        String old_ssid = prefs.getString("wifi_ssid", "");
+        if (old_ssid.length() > 0) {
+            cfg.wifi_nets[0].ssid = old_ssid;
+            cfg.wifi_nets[0].pass = prefs.getString("wifi_pass", "");
+            memset(cfg.wifi_nets[0].bssid, 0, 6);
+            cfg.wifi_nets[0].channel = 0;
+            cfg.wifi_nets[0].enabled = true;
+            cfg.wifi_net_count = 1;
+            Config::save_wifi_nets();
+            prefs.remove("wifi_ssid");
+            prefs.remove("wifi_pass");
+        }
+    }
+}
+
 void Config::load() {
     cfg.hostname        = prefs.getString("hostname", cfg.hostname);
-    cfg.wifi_ssid       = prefs.getString("wifi_ssid", cfg.wifi_ssid);
-    cfg.wifi_pass       = prefs.getString("wifi_pass", cfg.wifi_pass);
     cfg.wifi_mode       = prefs.getUChar("wifi_mode", cfg.wifi_mode);
+    cfg.wifi_roam       = prefs.getBool("wifi_roam", cfg.wifi_roam);
     cfg.tcp_port        = prefs.getUShort("tcp_port", cfg.tcp_port);
+    load_wifi_nets();
 
     cfg.oxi_enabled     = prefs.getBool("oxi_enabled", cfg.oxi_enabled);
     cfg.oxi_auto_start  = prefs.getBool("oxi_autostart", cfg.oxi_auto_start);
@@ -88,10 +132,10 @@ void Config::load() {
 
 void Config::save() {
     prefs.putString("hostname", cfg.hostname);
-    prefs.putString("wifi_ssid", cfg.wifi_ssid);
-    prefs.putString("wifi_pass", cfg.wifi_pass);
     prefs.putUChar("wifi_mode", cfg.wifi_mode);
+    prefs.putBool("wifi_roam", cfg.wifi_roam);
     prefs.putUShort("tcp_port", cfg.tcp_port);
+    // wifi_nets saved separately via save_wifi_nets()
 
     prefs.putBool("oxi_enabled", cfg.oxi_enabled);
     prefs.putBool("oxi_autostart", cfg.oxi_auto_start);
@@ -176,9 +220,8 @@ struct KVEntry {
 
 static const KVEntry kv_table[] = {
     KV_STR("hostname", hostname),
-    KV_STR("wifi_ssid", wifi_ssid),
-    KV_STR("wifi_pass", wifi_pass),
     KV_U8("wifi_mode", wifi_mode),
+    KV_BOOL("wifi_roam", wifi_roam),
     KV_U16("tcp_port", tcp_port),
     KV_BOOL("oxi_enabled", oxi_enabled),
     KV_BOOL("oxi_auto_start", oxi_auto_start),
@@ -246,11 +289,84 @@ void Config::foreach_kv(kv_visitor_fn fn, void *ctx) {
 
 String Config::dump() {
     String out;
+    // wifi networks
+    for (int i = 0; i < cfg.wifi_net_count; i++) {
+        out += "wifi_net_" + String(i) + "=" + cfg.wifi_nets[i].ssid;
+        if (cfg.wifi_nets[i].channel > 0)
+            out += " (ch" + String(cfg.wifi_nets[i].channel) + ")";
+        if (!cfg.wifi_nets[i].enabled) out += " [disabled]";
+        out += "\n";
+    }
+    // KV table entries
     foreach_kv([](const char *key, const String &val, void *p) {
         String v = val;
-        if ((strcmp(key, "wifi_pass") == 0 || strcmp(key, "http_pass") == 0) && v.length() > 0)
-            v = "****";
+        if (strstr(key, "pass") && v.length() > 0) v = "****";
         *(String*)p += String(key) + "=" + v + "\n";
     }, &out);
     return out;
+}
+
+
+void Config::save_wifi_nets() {
+    Preferences wp;
+    wp.begin("wnet", false);
+    wp.putUChar("count", cfg.wifi_net_count);
+    for (int i = 0; i < WIFI_MAX_NETWORKS; i++) {
+        char key[14];
+        if (i < cfg.wifi_net_count) {
+            snprintf(key, sizeof(key), "ssid_%d", i);
+            wp.putString(key, cfg.wifi_nets[i].ssid);
+            snprintf(key, sizeof(key), "pass_%d", i);
+            wp.putString(key, cfg.wifi_nets[i].pass);
+            snprintf(key, sizeof(key), "bssid_%d", i);
+            wp.putBytes(key, cfg.wifi_nets[i].bssid, 6);
+            snprintf(key, sizeof(key), "chan_%d", i);
+            wp.putUChar(key, cfg.wifi_nets[i].channel);
+            snprintf(key, sizeof(key), "ena_%d", i);
+            wp.putBool(key, cfg.wifi_nets[i].enabled);
+        } else {
+            snprintf(key, sizeof(key), "ssid_%d", i); wp.remove(key);
+            snprintf(key, sizeof(key), "pass_%d", i); wp.remove(key);
+            snprintf(key, sizeof(key), "bssid_%d", i); wp.remove(key);
+            snprintf(key, sizeof(key), "chan_%d", i); wp.remove(key);
+            snprintf(key, sizeof(key), "ena_%d", i); wp.remove(key);
+        }
+    }
+    wp.end();
+}
+
+bool Config::add_network(const char *ssid, const char *pass) {
+    if (cfg.wifi_net_count >= WIFI_MAX_NETWORKS) return false;
+    int idx = cfg.wifi_net_count;
+    cfg.wifi_nets[idx].ssid = ssid;
+    cfg.wifi_nets[idx].pass = pass ? pass : "";
+    memset(cfg.wifi_nets[idx].bssid, 0, 6);
+    cfg.wifi_nets[idx].channel = 0;
+    cfg.wifi_nets[idx].enabled = true;
+    cfg.wifi_net_count++;
+    save_wifi_nets();
+    return true;
+}
+
+bool Config::remove_network(uint8_t idx) {
+    if (idx >= cfg.wifi_net_count) return false;
+    // shift remaining entries down
+    for (int i = idx; i < cfg.wifi_net_count - 1; i++)
+        cfg.wifi_nets[i] = cfg.wifi_nets[i + 1];
+    cfg.wifi_net_count--;
+    // clear the vacated slot
+    cfg.wifi_nets[cfg.wifi_net_count].ssid = "";
+    cfg.wifi_nets[cfg.wifi_net_count].pass = "";
+    memset(cfg.wifi_nets[cfg.wifi_net_count].bssid, 0, 6);
+    cfg.wifi_nets[cfg.wifi_net_count].channel = 0;
+    cfg.wifi_nets[cfg.wifi_net_count].enabled = false;
+    save_wifi_nets();
+    return true;
+}
+
+void Config::update_network_hint(uint8_t idx, const uint8_t *bssid, uint8_t channel) {
+    if (idx >= cfg.wifi_net_count) return;
+    memcpy(cfg.wifi_nets[idx].bssid, bssid, 6);
+    cfg.wifi_nets[idx].channel = channel;
+    save_wifi_nets();
 }

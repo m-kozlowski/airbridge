@@ -1080,6 +1080,88 @@ static void handleEspOtaDone(AsyncWebServerRequest *request) {
     request->send(200, "application/json", json);
 }
 
+// WiFi management
+
+static void handleWifiGet(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+    auto &cfg = Config::get();
+
+    String json = "{";
+    jsonAddString(json, "state", WiFiSetup::state_name(), false);
+    jsonAddString(json, "ssid", WiFiSetup::connected_ssid());
+    jsonAddInt(json, "rssi", WiFiSetup::current_rssi());
+    jsonAddInt(json, "net_idx", WiFiSetup::connected_net_idx());
+    jsonAddString(json, "roam", cfg.wifi_roam ? "1" : "0");
+
+    json += ",\"networks\":[";
+    for (int i = 0; i < cfg.wifi_net_count; i++) {
+        if (i > 0) json += ',';
+        json += "{";
+        jsonAddString(json, "ssid", cfg.wifi_nets[i].ssid.c_str(), false);
+        jsonAddString(json, "enabled", cfg.wifi_nets[i].enabled ? "1" : "0");
+        bool has_hint = (cfg.wifi_nets[i].channel > 0);
+        jsonAddString(json, "hint", has_hint ? "1" : "0");
+        jsonAddInt(json, "channel", cfg.wifi_nets[i].channel);
+        jsonAddInt(json, "rssi", WiFiSetup::net_rssi(i));
+        json += "}";
+    }
+    json += "]}";
+    request->send(200, "application/json", json);
+}
+
+static void handleWifiPost(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+    String body = getBody(request);
+    String action, ssid, pass;
+    int idx = -1;
+
+    struct wifi_kv_ctx { String *action; String *ssid; String *pass; int *idx; };
+    wifi_kv_ctx wctx = {&action, &ssid, &pass, &idx};
+    json_foreach_kv(body, [](const String &key, const String &val, void *p) {
+        wifi_kv_ctx *c = (wifi_kv_ctx *)p;
+        if (key == "action") *c->action = val;
+        else if (key == "ssid") *c->ssid = val;
+        else if (key == "pass") *c->pass = val;
+        else if (key == "idx") *c->idx = val.toInt();
+    }, &wctx);
+
+    String result = "unknown action";
+    bool ok = false;
+
+    if (action == "add") {
+        if (ssid.length() > 0) {
+            ok = Config::add_network(ssid.c_str(), pass.c_str());
+            result = ok ? "network added" : "list full (max 4)";
+        } else {
+            result = "ssid required";
+        }
+    } else if (action == "remove") {
+        if (idx >= 0) {
+            ok = Config::remove_network((uint8_t)idx);
+            result = ok ? "network removed" : "invalid index";
+        } else {
+            result = "idx required";
+        }
+    } else if (action == "update") {
+        auto &cfg = Config::get();
+        if (idx >= 0 && idx < cfg.wifi_net_count) {
+            if (ssid.length() > 0) cfg.wifi_nets[idx].ssid = ssid;
+            if (pass.length() > 0) cfg.wifi_nets[idx].pass = pass;
+            Config::save_wifi_nets();
+            ok = true;
+            result = "network updated";
+        } else {
+            result = "invalid index";
+        }
+    }
+
+    String json = "{";
+    jsonAddString(json, "ok", ok ? "true" : "false", false);
+    jsonAddString(json, "result", result.c_str());
+    json += '}';
+    request->send(200, "application/json", json);
+}
+
 static void handleReboot(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
     request->send(200, "application/json", "{\"ok\":true}");
@@ -1153,6 +1235,8 @@ void WebUI::init(uint16_t port) {
     http->on("/api/flash/cancel", HTTP_POST, handleFlashCancel);
     http->on("/api/time", HTTP_POST, handleTimeAction, NULL, handleJsonBody);
     http->on("/api/report", HTTP_GET, handleReport);
+    http->on("/api/wifi", HTTP_GET, handleWifiGet);
+    http->on("/api/wifi", HTTP_POST, handleWifiPost, NULL, handleJsonBody);
     http->on("/api/esp32/upload", HTTP_POST, handleEspOtaDone, handleEspOtaChunk);
     http->on("/api/reboot", HTTP_POST, handleReboot);
 

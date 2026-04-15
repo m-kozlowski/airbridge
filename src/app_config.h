@@ -2,11 +2,22 @@
 #include <Arduino.h>
 #include "board.h"
 
+#define WIFI_MAX_NETWORKS 4
+
+struct WiFiNetwork {
+    String      ssid;
+    String      pass;
+    uint8_t     bssid[6];
+    uint8_t     channel;
+    bool        enabled;
+};
+
 struct AirBridgeConfig {
     String      hostname;
-    String      wifi_ssid;
-    String      wifi_pass;
+    WiFiNetwork wifi_nets[WIFI_MAX_NETWORKS];
+    uint8_t     wifi_net_count;     // populated slots
     uint8_t     wifi_mode;          // 0=STA, 1=AP, 2=off
+    bool        wifi_roam;          // hysteresis-based roaming
     uint16_t    tcp_port;
 
     bool        oxi_enabled;
@@ -62,4 +73,9 @@ namespace Config {
 
     typedef void (*kv_visitor_fn)(const char *key, const String &val, void *ctx);
     void foreach_kv(kv_visitor_fn fn, void *ctx);
+
+    bool add_network(const char *ssid, const char *pass);
+    bool remove_network(uint8_t idx);
+    void update_network_hint(uint8_t idx, const uint8_t *bssid, uint8_t channel);
+    void save_wifi_nets();
 }

@@ -394,6 +394,15 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
 
       <!-- DEVICE CONFIG -->
       <div class="pane" id="p-device">
+        <div class="card" style="border-left:3px solid var(--accent)">
+          <h3>WiFi Networks</h3>
+          <div id="wifiNetList"></div>
+          <div class="btn-group" style="margin-top:12px">
+            <button class="btn btn-accent" onclick="wifiAddPrompt()">Add Network</button>
+          </div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:8px" id="wifiState"></div>
+          <div class="msg" id="wifiMsg"></div>
+        </div>
         <div class="card">
           <h3>Device Configuration</h3>
           <div class="spinner" id="configSpinner"></div>
@@ -526,6 +535,11 @@ function initSSE() {
   });
   evtSrc.addEventListener('flash', e => {
     try { updateFlashFromPush(JSON.parse(e.data)); } catch(ex) {}
+  });
+  evtSrc.addEventListener('wifi', e => {
+    // Refresh WiFi list if Config tab is active
+    var pane = document.getElementById('p-device');
+    if (pane && pane.classList.contains('active')) loadWifiNets();
   });
   evtSrc.onerror = () => {
     var li = document.getElementById('liveIndicator');
@@ -664,7 +678,10 @@ function showTab(id) {
   if (['patient','clinical','climate'].includes(id) && !settings.length) loadSettings();
   if (id === 'bluetooth') loadBle();
   if (id === 'console') document.getElementById('cmdInput').focus();
-  if (id === 'device' && !document.getElementById('configFields').children.length) loadConfig();
+  if (id === 'device') {
+    loadWifiNets();
+    if (!document.getElementById('configFields').children.length) loadConfig();
+  }
   if (id === 'ota') {
     checkFlashReady();
     var ev = document.getElementById('espFwVer');
@@ -914,11 +931,65 @@ var TZ_ZONES=['Pacific/Honolulu','America/Anchorage','America/Los_Angeles','Amer
 
 function attachTzHelper(inp){var wrap=document.createElement('div');wrap.style.cssText='display:flex;gap:6px;align-items:center;flex-wrap:wrap';inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);var btn=document.createElement('button');btn.className='btn';btn.style.cssText='padding:4px 10px;font-size:12px';btn.textContent='detect';wrap.appendChild(btn);var sel=document.createElement('select');sel.style.cssText='font-size:12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px';var o0=document.createElement('option');o0.value='';o0.textContent='preset...';sel.appendChild(o0);TZ_ZONES.forEach(function(tz){var o=document.createElement('option');o.value=tz;o.textContent=tz;sel.appendChild(o)});wrap.appendChild(sel);btn.onclick=function(){try{var detected=Intl.DateTimeFormat().resolvedOptions().timeZone;inp.value=getPosixTz(detected);inp.title=detected}catch(e){inp.value='detection failed'}};sel.onchange=function(){if(sel.value){try{inp.value=getPosixTz(sel.value);inp.title=sel.value}catch(e){inp.value='error'}}}}
 
+// WiFi network management
+async function loadWifiNets() {
+  try {
+    var r = await api('/api/wifi'); if (!r) return;
+    var d = await r.json();
+    var el = document.getElementById('wifiNetList');
+    el.innerHTML = '';
+    if (d.networks && d.networks.length) {
+      d.networks.forEach(function(net, i) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        var connected = (i === d.net_idx && d.state === 'connected');
+        var rssi_str = net.rssi ? ' (' + net.rssi + ' dBm)' : '';
+        var status = connected
+          ? ' <span class="badge badge-streaming" style="margin-left:8px">Connected' + rssi_str + '</span>'
+          : (net.rssi ? ' <span style="color:var(--text-dim);margin-left:8px;font-size:12px">' + net.rssi + ' dBm</span>' : '');
+        row.innerHTML = '<label><strong>' + net.ssid + '</strong>' + status +
+          '</label><button class="btn btn-danger" onclick="wifiRemove(' + i + ')" style="padding:4px 12px;font-size:12px">Remove</button>';
+        el.appendChild(row);
+      });
+    } else {
+      el.innerHTML = '<div style="color:var(--text-dim);font-size:13px;padding:8px 0">No networks configured</div>';
+    }
+    var ws = document.getElementById('wifiState');
+    if (ws) ws.textContent = 'State: ' + d.state + (d.roam === '1' ? ' | Roaming enabled' : '');
+  } catch(e) { console.error(e); }
+}
+
+function wifiAddPrompt() {
+  var ssid = prompt('SSID:');
+  if (!ssid) return;
+  var pass = prompt('Password (empty for open):') || '';
+  wifiAction('add', ssid, pass);
+}
+
+async function wifiAction(action, ssid, pass, idx) {
+  var body = {action: action};
+  if (ssid) body.ssid = ssid;
+  if (pass !== undefined) body.pass = pass;
+  if (idx !== undefined) body.idx = String(idx);
+  try {
+    var r = await api('/api/wifi', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if (!r) return;
+    var d = await r.json();
+    showMsg(document.getElementById('wifiMsg'), d.result, d.ok === 'true' ? 'ok' : 'err');
+    loadWifiNets();
+  } catch(e) { showMsg(document.getElementById('wifiMsg'), 'Error: ' + e.message, 'err'); }
+}
+
+function wifiRemove(idx) {
+  if (!confirm('Remove this network?')) return;
+  wifiAction('remove', null, undefined, idx);
+}
+
 async function loadConfig() {
   const sp = document.getElementById('configSpinner'); sp.style.display = 'block';
   var CFG_SECTIONS = ['WiFi & Network','Time & Timezone','Oximetry','UART','Advanced'];
   var CFG_META = {
-    hostname:['WiFi & Network','Device hostname (mDNS + AP name)'],wifi_ssid:['WiFi & Network','WiFi network name (station mode)'],wifi_pass:['WiFi & Network','WiFi password'],wifi_mode:['WiFi & Network','0=station, 1=AP, 2=off'],tcp_port:['WiFi & Network','TCP command port'],debug_port:['WiFi & Network','Debug log stream port (read-only)'],http_port:['WiFi & Network','Web server port'],http_user:['WiFi & Network','Web UI username'],http_pass:['WiFi & Network','Web UI password'],ota_password:['WiFi & Network','ArduinoOTA password'],udp_oxi_port:['WiFi & Network','UDP oximetry port (0=disabled)'],
+    hostname:['WiFi & Network','Device hostname (mDNS + AP name)'],wifi_mode:['WiFi & Network','0=station, 1=AP, 2=off'],wifi_roam:['WiFi & Network','Enable hysteresis-based roaming'],tcp_port:['WiFi & Network','TCP command port'],debug_port:['WiFi & Network','Debug log stream port (read-only)'],http_port:['WiFi & Network','Web server port'],http_user:['WiFi & Network','Web UI username'],http_pass:['WiFi & Network','Web UI password'],ota_password:['WiFi & Network','ArduinoOTA password'],udp_oxi_port:['WiFi & Network','UDP oximetry port (0=disabled)'],
     ntp_server:['Time & Timezone','NTP server (empty = DHCP or pool.ntp.org)'],tz:['Time & Timezone','POSIX timezone string'],
     oxi_enabled:['Oximetry','Enable BLE oximeter support'],oxi_auto_start:['Oximetry','Auto-start feeding on connect'],oxi_feed_therapy_only:['Oximetry','Only inject during active therapy'],oxi_device_type:['Oximetry','0=auto, 1=Nonin, 2=O2Ring, 3=PLX'],oxi_device_addr:['Oximetry','Preferred oximeter MAC'],oxi_interval_ms:['Oximetry','Injection interval (ms)'],oxi_lframe_continuous:['Oximetry','Send L-frames even without valid reading'],oxi_require_known:['Oximetry','Only auto-connect to known devices'],
     uart_baud:['UART','AirSense UART baud rate'],uart_cmd_timeout_ms:['UART','Command response timeout (ms)'],uart_max_retries:['UART','Retry count for failed commands'],

@@ -236,6 +236,16 @@ void loop() {
     OtaManager::handle();
     WiFiSetup::check();
 
+    // suspend WiFi scanning during therapy/streaming/oximetry
+    system_state_t wifi_st = Arbiter::get_state();
+    bool oxi_active = OxiArbiter::is_feeding();
+    if (wifi_st == SYS_THERAPY || wifi_st == SYS_TRANSPARENT ||
+        wifi_st == SYS_OTA_AIRSENSE || wifi_st == SYS_OTA_ESP || oxi_active) {
+        WiFiSetup::suspend_roaming();
+    } else {
+        WiFiSetup::resume_roaming();
+    }
+
     sync_resmed_clock();
 
     // health monitoring

@@ -253,6 +253,50 @@ void dispatch_command(const char *line, String &response) {
         return;
     }
 
+    if (upper == "WIFI" || upper.startsWith("WIFI ")) {
+        String sub = upper.substring(4);
+        sub.trim();
+        auto &wfg = Config::get();
+        if (sub == "" || sub == "STATUS") {
+            response = "state: " + String(WiFiSetup::state_name()) + "\n";
+            response += "ssid: " + String(WiFiSetup::connected_ssid()) + "\n";
+            response += "rssi: " + String(WiFiSetup::current_rssi()) + " dBm\n";
+            response += "roaming: " + String(wfg.wifi_roam ? "enabled" : "disabled") + "\n";
+        } else if (sub == "LIST") {
+            if (wfg.wifi_net_count == 0) {
+                response = "(no networks configured)\n";
+            } else {
+                for (int i = 0; i < wfg.wifi_net_count; i++) {
+                    response += String(i) + ": " + wfg.wifi_nets[i].ssid;
+                    if (i == WiFiSetup::connected_net_idx()) response += " [connected]";
+                    if (wfg.wifi_nets[i].channel > 0) response += " (ch" + String(wfg.wifi_nets[i].channel) + ")";
+                    if (!wfg.wifi_nets[i].enabled) response += " [disabled]";
+                    response += "\n";
+                }
+            }
+        } else if (sub.startsWith("ADD ")) {
+            // WIFI ADD ssid password
+            String args = cmd.substring(upper.indexOf("ADD ") + 4);
+            int sp = args.indexOf(' ');
+            String ssid = sp > 0 ? args.substring(0, sp) : args;
+            String pass = sp > 0 ? args.substring(sp + 1) : "";
+            ssid.trim(); pass.trim();
+            if (Config::add_network(ssid.c_str(), pass.c_str()))
+                response = "OK: added '" + ssid + "'\n";
+            else
+                response = "ERR: list full\n";
+        } else if (sub.startsWith("REMOVE ")) {
+            int idx = sub.substring(7).toInt();
+            if (Config::remove_network((uint8_t)idx))
+                response = "OK: removed slot " + String(idx) + "\n";
+            else
+                response = "ERR: invalid index\n";
+        } else {
+            response = "ERR: WIFI [STATUS|LIST|ADD ssid pass|REMOVE N]\n";
+        }
+        return;
+    }
+
     if (upper == "FLASH" || upper.startsWith("FLASH ")) {
         String sub = upper.substring(5);
         sub.trim();
@@ -374,6 +418,10 @@ void dispatch_command(const char *line, String &response) {
                    "  FLASH STATUS|CANCEL Monitor/cancel flash\n"
                    "  LOG                 Show all category log levels\n"
                    "  LOG [cat] level     Set log level (cats: OXI TCP OTA WEB ARB HEALTH ALL)\n"
+                   "  WIFI                WiFi status/management\n"
+                   "  WIFI LIST           List configured networks\n"
+                   "  WIFI ADD ssid pass  Add network\n"
+                   "  WIFI REMOVE N       Remove network at index\n"
                    "  TRANSPARENT         Enter raw UART mode\n"
                    "  VERSION             Firmware version info\n"
                    "  RESETREASON         Last reset reason\n"
