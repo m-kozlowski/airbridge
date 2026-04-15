@@ -50,7 +50,7 @@ static NimBLEClient *pClient = nullptr;
 
 static SemaphoreHandle_t scan_mutex = nullptr;
 static oxi_scan_result_t scan_results[MAX_SCAN_RESULTS];
-static volatile int scan_result_count = 0;
+static int scan_result_count = 0;
 static bool device_needs_encryption = false;  // Nonin needs it, Viatom/O2Ring don't
 
 // Known devices list
