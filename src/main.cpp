@@ -236,14 +236,22 @@ void loop() {
     OtaManager::handle();
     WiFiSetup::check();
 
-    // suspend WiFi scanning during therapy/streaming/oximetry
-    system_state_t wifi_st = Arbiter::get_state();
+    // Suspend WiFi scanning during therapy/streaming/oximetry/OTA
+    system_state_t sys_st = Arbiter::get_state();
     bool oxi_active = OxiArbiter::is_feeding();
-    if (wifi_st == SYS_THERAPY || wifi_st == SYS_TRANSPARENT ||
-        wifi_st == SYS_OTA_AIRSENSE || wifi_st == SYS_OTA_ESP || oxi_active) {
+    bool ota_active = (sys_st == SYS_OTA_AIRSENSE || sys_st == SYS_OTA_ESP);
+
+    if (sys_st == SYS_THERAPY || sys_st == SYS_TRANSPARENT ||
+        ota_active || oxi_active) {
         WiFiSetup::suspend_roaming();
     } else {
         WiFiSetup::resume_roaming();
+    }
+
+    if (ota_active) {
+        OxiBle::suspend();
+    } else {
+        OxiBle::resume();
     }
 
     sync_resmed_clock();

@@ -43,6 +43,9 @@ namespace OxiBle {
     void enable();
     void disable();
 
+    void suspend();
+    void resume();
+
     oxi_state_t get_state();
     bool state_changed();
 

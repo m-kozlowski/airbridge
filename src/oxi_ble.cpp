@@ -43,6 +43,8 @@ static volatile bool disable_requested = false;     // drop connection, disable 
 static volatile bool del_one_requested = false;
 static volatile bool del_all_requested = false;
 static char del_one_addr[18] = "";
+static volatile bool ble_suspended = false;
+static volatile bool suspend_enter_requested = false;  // handle entry side-effects in task
 
 #define USER_CONNECT_RETRIES  3
 #define USER_RETRY_DELAY_MS   2000
@@ -456,6 +458,17 @@ void OxiBle::task(void *param) {
             set_state(OXI_DISCONNECTED);
         }
 
+        if (suspend_enter_requested) {
+            suspend_enter_requested = false;
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Suspend: stopping scan and dropping connection\n");
+            NimBLEDevice::getScan()->stop();
+            if (pClient->isConnected()) pClient->disconnect();
+            OxiArbiter::stop_feed();
+            scan_requested = false;
+            connect_mode = CONN_NONE;
+            if (state != OXI_DISABLED) set_state(OXI_DISCONNECTED);
+        }
+
         if (del_one_requested) {
             del_one_requested = false;
             char addr[18];
@@ -522,7 +535,7 @@ void OxiBle::task(void *param) {
             }
         }
 
-        if (scan_requested) {
+        if (scan_requested && !ble_suspended) {
             scan_requested = false;
             if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
             scan_result_count = 0;
@@ -538,7 +551,7 @@ void OxiBle::task(void *param) {
             pScan->start(SCAN_DURATION_MS);
         }
 
-        if (connect_mode != CONN_NONE) {
+        if (connect_mode != CONN_NONE && !ble_suspended) {
             connect_mode_t mode = connect_mode;
             connect_mode = CONN_NONE;
             NimBLEDevice::getScan()->stop();
@@ -690,7 +703,7 @@ void OxiBle::task(void *param) {
         }
 
         // Auto-reconnect: scan periodically when disconnected and no other source active
-        if (state == OXI_DISCONNECTED && cfg.oxi_enabled &&
+        if (state == OXI_DISCONNECTED && cfg.oxi_enabled && !ble_suspended &&
             OxiArbiter::active_source() == OXI_SRC_NONE &&
             millis() - last_reconnect > RECONNECT_DELAY_MS) {
             last_reconnect = millis();
@@ -738,6 +751,19 @@ void OxiBle::enable() {
     if (state == OXI_DISABLED) {
         set_state(OXI_DISCONNECTED);
         scan_requested = true;
+    }
+}
+void OxiBle::suspend() {
+    if (!ble_suspended) {
+        ble_suspended = true;
+        suspend_enter_requested = true;
+    }
+}
+void OxiBle::resume() {
+    if (ble_suspended) {
+        ble_suspended = false;
+        Log::logf(CAT_OXI, LOG_INFO, "[OXI] Resumed\n");
+        // Task's auto-reconnect will pick up from OXI_DISCONNECTED.
     }
 }
 oxi_state_t OxiBle::get_state()            { return state; }
