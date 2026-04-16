@@ -409,8 +409,20 @@ void WiFiSetup::check() {
             uint8_t best_idx = 0xFF;
             if (try_count > 0 && try_order[0] != connect_idx) {
                 int8_t current_rssi = WiFi.RSSI();
-                should_switch = true;
-                best_idx = try_order[0];
+                int8_t candidate_rssi = last_seen_rssi[try_order[0]];
+                if (candidate_rssi > current_rssi + ROAM_HYSTERESIS_DB) {
+                    should_switch = true;
+                    best_idx = try_order[0];
+                    Log::logf(CAT_TCP, LOG_INFO,
+                              "[WIFI] Candidate '%s' %d dBm beats current %d dBm by >=%d\n",
+                              cfg.wifi_nets[best_idx].ssid.c_str(),
+                              candidate_rssi, current_rssi, ROAM_HYSTERESIS_DB);
+                } else {
+                    Log::logf(CAT_TCP, LOG_DEBUG,
+                              "[WIFI] Candidate '%s' %d dBm vs current %d dBm (<%d hysteresis), staying\n",
+                              cfg.wifi_nets[try_order[0]].ssid.c_str(),
+                              candidate_rssi, current_rssi, ROAM_HYSTERESIS_DB);
+                }
             }
             if (should_switch && best_idx < cfg.wifi_net_count) {
                 Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Roaming to '%s'\n",
@@ -419,7 +431,6 @@ void WiFiSetup::check() {
                 delay(100);
                 begin_connect(best_idx, true);
             } else {
-                Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] No better AP found, staying\n");
                 set_state(WF_CONNECTED);
                 low_rssi_count = 0;
             }
