@@ -3,20 +3,38 @@
 #include "qframe.h"
 #include "app_config.h"
 #include "debug_log.h"
+#include <stdint.h>
 
-// integer pow10 for positive exponents 0-7
+// integer pow10 for exponent magnitudes 0-7
 static const int32_t pow10_int[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000};
+#define POW10_MAX ((int)(sizeof(pow10_int)/sizeof(pow10_int[0])))  // 8
 
 int16_t parse_sfloat(uint16_t raw) {
-    if (raw == 0x07FF || raw == 0x0800 || raw == 0x07FE) return -1;
-    int16_t mantissa = raw & 0x0FFF;
-    if (mantissa & 0x0800) mantissa |= 0xF000;
+    if (raw == 0x07FF || raw == 0x0800 || raw == 0x07FE ||
+        raw == 0x0801 || raw == 0x0802) return -1;
+
+    // 12-bit two's-complement mantissa, sign-extended into int32
+    int32_t mantissa = raw & 0x0FFF;
+    if (mantissa & 0x0800) mantissa |= (int32_t)0xFFFFF000;
+
+    // 4-bit two's-complement exponent, range -8..7
     int8_t exp = (int8_t)((raw >> 12) & 0x0F);
     if (exp & 0x08) exp |= 0xF0;
-    if (exp == 0) return mantissa;
-    if (exp > 0) return (int16_t)(mantissa * pow10_int[exp]);
-    // negative exponent: divide
-    return (int16_t)(mantissa / pow10_int[-exp]);
+
+    int32_t value;
+    if (exp == 0) {
+        value = mantissa;
+    } else if (exp > 0) {
+        if (exp >= POW10_MAX) return -1;
+        value = mantissa * pow10_int[exp];
+    } else {
+        int abs_exp = -exp;  // 1..8
+        if (abs_exp >= POW10_MAX) return -1;
+        value = mantissa / pow10_int[abs_exp];
+    }
+
+    if (value < INT16_MIN || value > INT16_MAX) return -1;
+    return (int16_t)value;
 }
 
 static oxi_reading_t reading = { -1, -1, false, 0 };
