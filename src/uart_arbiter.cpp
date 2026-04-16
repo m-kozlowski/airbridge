@@ -15,6 +15,8 @@ static QueueHandle_t cmd_queue = nullptr;
 static TaskHandle_t arbiter_task_handle = nullptr;
 static TaskHandle_t rx_task_handle = nullptr;
 
+static SemaphoreHandle_t cleanup_mutex = nullptr;
+
 static volatile system_state_t sys_state = SYS_IDLE;
 static volatile uart_ticket_t *current_ticket = nullptr;
 static SemaphoreHandle_t rx_ready = nullptr;
@@ -234,14 +236,22 @@ static void arbiter_task(void *param) {
         current_ticket = nullptr;
         rx_frame_available = false;
 
+        if (t->no_ack) {
+            // send_frame: arbiter is sole owner of the heap ticket.
+            free(t);
+            continue;
+        }
+
+        xSemaphoreTake(cleanup_mutex, portMAX_DELAY);
         if (t->cancelled) {
-            // caller timed out, ticket is stale.
+            xSemaphoreGive(cleanup_mutex);
             Log::logf(CAT_ARB, LOG_WARN, "[ARB] Ticket %u cancelled by caller\n",
                       t->ticket_id);
-        } else if (t->done) {
-            xSemaphoreGive(t->done);
+            if (t->done) vSemaphoreDelete(t->done);
+            free(t);
         } else {
-            free(t);  // no_ack heap ticket, arbiter is sole owner
+            xSemaphoreGive(t->done);  // hand off; caller frees ticket + sem
+            xSemaphoreGive(cleanup_mutex);
         }
     }
 }
@@ -254,6 +264,7 @@ void Arbiter::init(HardwareSerial &serial, int rx_pin, int tx_pin, uint32_t baud
     current_baud = baud;
 
     rx_ready = xSemaphoreCreateBinary();
+    cleanup_mutex = xSemaphoreCreateMutex();
     qframe_parser_init(&transparent_parser);
     pq_init();
 
@@ -282,37 +293,54 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
         return false;
     }
 
-    uart_ticket_t ticket = {};
-    ticket.source = src;
-    ticket.priority = prio;
-    ticket.timeout_ms = timeout_ms;
-    ticket.done = xSemaphoreCreateBinary();
+    // heap-allocate so arbiter can safely outlive the caller on timeout.
+    uart_ticket_t *t = (uart_ticket_t*)calloc(1, sizeof(*t));
+    if (!t) return false;
+    t->source = src;
+    t->priority = prio;
+    t->timeout_ms = timeout_ms;
+    t->done = xSemaphoreCreateBinary();
+    if (!t->done) { free(t); return false; }
 
-    int len = qframe_build_cmd(cmd, ticket.frame, sizeof(ticket.frame));
+    int len = qframe_build_cmd(cmd, t->frame, sizeof(t->frame));
     if (len < 0) {
-        vSemaphoreDelete(ticket.done);
+        vSemaphoreDelete(t->done);
+        free(t);
         return false;
     }
-    ticket.frame_len = len;
+    t->frame_len = len;
+    t->ticket_id = next_ticket_id++;
 
-    if (!pq_push(&ticket)) {
-        vSemaphoreDelete(ticket.done);
+    if (!pq_push(t)) {
+        vSemaphoreDelete(t->done);
+        free(t);
         return false;
     }
 
-    BaseType_t got = xSemaphoreTake(ticket.done, pdMS_TO_TICKS(timeout_ms + 100));
-    if (got == pdTRUE) {
-        vSemaphoreDelete(ticket.done);
-    } else {
-        // Arbiter may still hold a pointer to this ticket - mark cancelled
-        ticket.cancelled = true;
-        vSemaphoreDelete(ticket.done);
-        ticket.done = nullptr;
+    BaseType_t got = xSemaphoreTake(t->done, pdMS_TO_TICKS(timeout_ms + 100));
+    if (got != pdTRUE) {
+        // timed out. Arbiter may still be processing or about to hand off.
+        // Under cleanup_mutex: either absorb a late give, or mark cancelled
+        // and let the arbiter free the ticket.
+        xSemaphoreTake(cleanup_mutex, portMAX_DELAY);
+        if (xSemaphoreTake(t->done, 0) == pdTRUE) {
+            // Arbiter gave the sem between our timeout and the mutex take.
+            // We own the ticket now; fall through to read response + free.
+            xSemaphoreGive(cleanup_mutex);
+        } else {
+            t->cancelled = true;
+            xSemaphoreGive(cleanup_mutex);
+            // Do NOT touch t after this point. Arbiter will free it.
+            if (resp_len) *resp_len = 0;
+            return false;
+        }
     }
+
+    bool ok = t->success;
 
     // BDD baud switching (arbiter mode)
-    if (ticket.success && strncmp(cmd, "P S #BDD ", 9) == 0) {
-        uint32_t new_baud = parse_bdd_baud(ticket.resp_payload, ticket.resp_len);
+    if (ok && strncmp(cmd, "P S #BDD ", 9) == 0) {
+        uint32_t new_baud = parse_bdd_baud(t->resp_payload, t->resp_len);
         if (new_baud && new_baud != current_baud) {
             uart->updateBaudRate(new_baud);
             Log::logf(CAT_ARB, LOG_INFO, "[ARB] BDD arbiter: baud %u -> %u\n",
@@ -321,19 +349,19 @@ bool Arbiter::send_cmd(const char *cmd, cmd_source_t src, cmd_priority_t prio,
         }
     }
 
-    if (resp_buf && ticket.resp_len > 0) {
-        uint16_t copy_len = ticket.resp_len;
+    if (resp_buf && t->resp_len > 0) {
+        uint16_t copy_len = t->resp_len;
         if (resp_len && *resp_len > 0) {
             copy_len = min(copy_len, (uint16_t)(*resp_len - 1));
         }
-        memcpy(resp_buf, ticket.resp_payload, copy_len);
+        memcpy(resp_buf, t->resp_payload, copy_len);
         resp_buf[copy_len] = '\0';
     }
-    if (resp_len) {
-        *resp_len = ticket.resp_len;
-    }
+    if (resp_len) *resp_len = t->resp_len;
 
-    return ticket.success;
+    vSemaphoreDelete(t->done);
+    free(t);
+    return ok;
 }
 
 bool Arbiter::send_frame(const uint8_t *frame, uint16_t frame_len,
@@ -354,6 +382,7 @@ bool Arbiter::send_frame(const uint8_t *frame, uint16_t frame_len,
     ticket->done = nullptr;  // no semaphore — arbiter frees ticket
     memcpy(ticket->frame, frame, frame_len);
     ticket->frame_len = frame_len;
+    ticket->ticket_id = next_ticket_id++;
 
     if (!pq_push(ticket)) {
         free(ticket);
