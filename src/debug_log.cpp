@@ -66,11 +66,11 @@ const char *Log::cat_name(log_cat_t cat) {
         case CAT_GENERAL: return "GENERAL";
         case CAT_OXI:     return "OXI";
         case CAT_TCP:     return "TCP";
+        case CAT_WIFI:    return "WIFI";
         case CAT_OTA:     return "OTA";
         case CAT_WEB:     return "WEB";
         case CAT_ARB:     return "ARB";
         case CAT_HEALTH:  return "HEALTH";
-        case CAT_INIT:    return "INIT";
         default:          return "?";
     }
 }

@@ -34,22 +34,22 @@ void setup() {
     Config::load();
 
     Arbiter::init(Serial1, PIN_AS10_RX, PIN_AS10_TX, Config::get().uart_baud);
-    Log::logf(CAT_INIT, LOG_INFO, "[INIT] UART arbiter started\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] UART arbiter started\n");
 
     delay(1000);
 
     Migrate::run(lct_display);
 
-    Log::logf(CAT_INIT, LOG_INFO, "[MIG] Migration complete. Starting WiFi for OTA...\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[MIG] Migration complete. Starting WiFi for OTA...\n");
 
     bool wifi_ok = WiFiSetup::init();
     if (wifi_ok) {
         OtaManager::init();
         ota_enabled = true;
-        Log::logf(CAT_INIT, LOG_INFO, "[MIG] OTA ready. Upload target firmware now.\n");
+        Log::logf(CAT_GENERAL, LOG_INFO, "[MIG] OTA ready. Upload target firmware now.\n");
         lct_display("OTA READY");
     } else {
-        Log::logf(CAT_INIT, LOG_ERROR, "[MIG] WiFi failed! Cannot receive OTA.\n");
+        Log::logf(CAT_GENERAL, LOG_ERROR, "[MIG] WiFi failed! Cannot receive OTA.\n");
         lct_display("WIFI FAIL");
     }
 }

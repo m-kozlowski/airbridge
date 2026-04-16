@@ -146,15 +146,15 @@ void setup() {
 
     Config::init();
     Config::load();
-    Log::logf(CAT_INIT, LOG_INFO, "[INIT] Config loaded\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] Config loaded\n");
 
     Arbiter::init(Serial1, PIN_AS10_RX, PIN_AS10_TX, Config::get().uart_baud);
-    Log::logf(CAT_INIT, LOG_INFO, "[INIT] UART arbiter started\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] UART arbiter started\n");
 
     bool wifi_ok = WiFiSetup::init();
 
     TcpBridge::init();
-    Log::logf(CAT_INIT, LOG_INFO, "[INIT] TCP bridge started\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] TCP bridge started\n");
 
     if (wifi_ok) OtaManager::init();
 
@@ -164,9 +164,9 @@ void setup() {
     OxiArbiter::init();
     OxiBle::init();
     OxiUdp::init();
-    Log::logf(CAT_INIT, LOG_INFO, "[INIT] BLE oximetry started\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] BLE oximetry started\n");
 
-    Log::logf(CAT_INIT, LOG_INFO, "[INIT] All systems go\n");
+    Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] All systems go\n");
 }
 
 static bool resmed_time_set = false;
@@ -193,11 +193,11 @@ bool push_time_to_resmed() {
     bool ok_tic = Arbiter::send_cmd(tic_cmd, CMD_SRC_INTERNAL, CMD_PRIO_NORMAL, resp, &resp_len);
 
     if (ok_dac && ok_tic) {
-        Log::logf(CAT_INIT, LOG_INFO, "[INIT] ResMed clock set: %02d%02d%04d %02d%02d%02d\n",
+        Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] ResMed clock set: %02d%02d%04d %02d%02d%02d\n",
                   t.tm_mday, t.tm_mon + 1, t.tm_year + 1900,
                   t.tm_hour, t.tm_min, t.tm_sec);
     } else {
-        Log::logf(CAT_INIT, LOG_WARN, "[INIT] ResMed clock set failed (dac=%d tic=%d)\n",
+        Log::logf(CAT_GENERAL, LOG_WARN, "[INIT] ResMed clock set failed (dac=%d tic=%d)\n",
                   ok_dac, ok_tic);
     }
     return ok_dac && ok_tic;
@@ -215,7 +215,7 @@ bool pull_time_from_resmed() {
         if (sscanf(dv, "%2d%2d%4d", &dd, &mm, &yyyy) == 3 &&
             sscanf(tv, "%2d%2d%2d", &hh, &mn, &ss) == 3) {
             WiFiSetup::set_fallback_time(yyyy, mm, dd, hh, mn, ss, true);
-            Log::logf(CAT_INIT, LOG_INFO, "[INIT] Time from ResMed: %04d-%02d-%02d %02d:%02d:%02d\n",
+            Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] Time from ResMed: %04d-%02d-%02d %02d:%02d:%02d\n",
                       yyyy, mm, dd, hh, mn, ss);
             return true;
         }

@@ -417,7 +417,7 @@ void dispatch_command(const char *line, String &response) {
                    "  FLASH [block] [BLX] [FORCE]  Flash uploaded firmware\n"
                    "  FLASH STATUS|CANCEL Monitor/cancel flash\n"
                    "  LOG                 Show all category log levels\n"
-                   "  LOG [cat] level     Set log level (cats: OXI TCP OTA WEB ARB HEALTH ALL)\n"
+                   "  LOG [cat] level     Set log level (cats: GENERAL OXI TCP WIFI OTA WEB ARB HEALTH ALL)\n"
                    "  WIFI                WiFi status/management\n"
                    "  WIFI LIST           List configured networks\n"
                    "  WIFI ADD ssid pass  Add network\n"

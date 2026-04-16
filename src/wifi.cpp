@@ -59,7 +59,7 @@ static void ntp_sync_cb(struct timeval *tv) {
     struct tm t;
     time_t now = time(nullptr);
     localtime_r(&now, &t);
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP synced: %04d-%02d-%02d %02d:%02d:%02d\n",
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] NTP synced: %04d-%02d-%02d %02d:%02d:%02d\n",
               t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
               t.tm_hour, t.tm_min, t.tm_sec);
 }
@@ -78,13 +78,13 @@ static void sync_ntp() {
         esp_sntp_servermode_dhcp(false);
 #endif
         esp_sntp_setservername(0, cfg.ntp_server.c_str());
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP: configured server %s\n", cfg.ntp_server.c_str());
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] NTP: configured server %s\n", cfg.ntp_server.c_str());
     } else {
 #if LWIP_DHCP_GET_NTP_SRV
         esp_sntp_servermode_dhcp(true);
 #endif
         esp_sntp_setservername(0, "pool.ntp.org");
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] NTP: DHCP + pool.ntp.org fallback\n");
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] NTP: DHCP + pool.ntp.org fallback\n");
     }
     esp_sntp_init();
 }
@@ -135,11 +135,11 @@ static void begin_connect(uint8_t idx, bool use_hint) {
     bool has_hint = (net.channel > 0 && memcmp(net.bssid, "\0\0\0\0\0\0", 6) != 0);
 
     if (use_hint && has_hint) {
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Fast connect to '%s' ch=%d\n",
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Fast connect to '%s' ch=%d\n",
                   net.ssid.c_str(), net.channel);
         WiFi.begin(net.ssid.c_str(), net.pass.c_str(), net.channel, net.bssid);
     } else {
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Connecting to '%s'...\n", net.ssid.c_str());
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Connecting to '%s'...\n", net.ssid.c_str());
         WiFi.begin(net.ssid.c_str(), net.pass.c_str());
         set_state(WF_CONNECTING);
     }
@@ -197,10 +197,10 @@ static void process_scan_results() {
     WiFi.scanDelete();
 
     if (nc > 0) {
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Scan: %d known of %d visible, best='%s' (%d dBm)\n",
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Scan: %d known of %d visible, best='%s' (%d dBm)\n",
                   nc, n, cfg.wifi_nets[try_order[0]].ssid.c_str(), (int)candidates[0].rssi);
     } else {
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Scan: 0 known of %d visible\n", n);
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Scan: 0 known of %d visible\n", n);
     }
 
     WebUI::push_event("wifi", "{\"scan_done\":true}");
@@ -208,7 +208,7 @@ static void process_scan_results() {
 
 static void on_connected() {
     auto &cfg = Config::get();
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Connected to '%s' (%s)\n",
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Connected to '%s' (%s)\n",
               WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
 
     connect_idx = find_net_by_ssid(WiFi.SSID().c_str());
@@ -218,7 +218,7 @@ static void on_connected() {
         uint8_t *bssid = WiFi.BSSID();
         if (bssid) {
             Config::update_network_hint(connect_idx, bssid, WiFi.channel());
-            Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] Hint saved: ch=%d bssid=%02X:%02X:%02X:%02X:%02X:%02X\n",
+            Log::logf(CAT_WIFI, LOG_DEBUG, "[WIFI] Hint saved: ch=%d bssid=%02X:%02X:%02X:%02X:%02X:%02X\n",
                       WiFi.channel(), bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
         }
     }
@@ -240,7 +240,7 @@ static void enter_ap_fallback() {
     WiFi.mode(WIFI_AP_STA);
     String ap = ap_ssid_str();
     WiFi.softAP(ap.c_str(), "airbridge");
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] AP+STA fallback: %s (%s)\n",
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] AP+STA fallback: %s (%s)\n",
               ap.c_str(), WiFi.softAPIP().toString().c_str());
     set_state(WF_AP_FALLBACK);
     last_ap_retry = millis();
@@ -248,7 +248,7 @@ static void enter_ap_fallback() {
 
 
 static bool try_smartconfig() {
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] SmartConfig waiting...\n");
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] SmartConfig waiting...\n");
     WiFi.mode(WIFI_STA);
     WiFi.beginSmartConfig();
     set_state(WF_SMARTCONFIG);
@@ -284,7 +284,7 @@ bool WiFiSetup::init() {
     String ap = ap_ssid_str();
     WiFi.softAP(ap.c_str(), "airbridge");
     delay(100);
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] AP mode: %s %s\n",
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] AP mode: %s %s\n",
               ap.c_str(), WiFi.softAPIP().toString().c_str());
     set_state(WF_OFF);
     return true;
@@ -309,7 +309,7 @@ void WiFiSetup::check() {
 
     if (sta_disconnected && wf_state == WF_CONNECTED) {
         sta_disconnected = false;
-        Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Disconnected, scanning...\n");
+        Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Disconnected, scanning...\n");
         WiFi.scanNetworks(true);  // async
         set_state(WF_SCANNING);
         return;
@@ -322,7 +322,7 @@ void WiFiSetup::check() {
 
     case WF_HINT_TRY:
         if (elapsed > HINT_TIMEOUT_MS) {
-            Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] Hint timeout, full scan\n");
+            Log::logf(CAT_WIFI, LOG_DEBUG, "[WIFI] Hint timeout, full scan\n");
             WiFi.disconnect();
             WiFi.scanNetworks(true);
             set_state(WF_SCANNING);
@@ -342,7 +342,7 @@ void WiFiSetup::check() {
                 try_smartconfig();
             }
         } else if (result == WIFI_SCAN_FAILED) {
-            Log::logf(CAT_TCP, LOG_WARN, "[WIFI] Scan failed\n");
+            Log::logf(CAT_WIFI, LOG_WARN, "[WIFI] Scan failed\n");
             if (cfg.wifi_net_count > 0) enter_ap_fallback();
             else try_smartconfig();
         }
@@ -353,15 +353,15 @@ void WiFiSetup::check() {
         if (elapsed > CONNECT_TIMEOUT_MS) {
             connect_retries++;
             if (connect_retries < CONNECT_RETRIES) {
-                Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] Connect timeout, retry %d\n", connect_retries);
+                Log::logf(CAT_WIFI, LOG_DEBUG, "[WIFI] Connect timeout, retry %d\n", connect_retries);
                 begin_connect(connect_idx, false);
             } else {
                 try_pos++;
                 if (try_pos < try_count) {
-                    Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] Trying next network\n");
+                    Log::logf(CAT_WIFI, LOG_DEBUG, "[WIFI] Trying next network\n");
                     begin_connect(try_order[try_pos], false);
                 } else {
-                    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] All networks exhausted\n");
+                    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] All networks exhausted\n");
                     enter_ap_fallback();
                 }
             }
@@ -376,10 +376,10 @@ void WiFiSetup::check() {
             int8_t rssi = WiFi.RSSI();
             if (rssi < ROAM_RSSI_THRESHOLD) {
                 low_rssi_count++;
-                Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] Low RSSI %d dBm (%d/%d)\n",
+                Log::logf(CAT_WIFI, LOG_DEBUG, "[WIFI] Low RSSI %d dBm (%d/%d)\n",
                           rssi, low_rssi_count, ROAM_CONSECUTIVE_LOW);
                 if (low_rssi_count >= ROAM_CONSECUTIVE_LOW) {
-                    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Roaming: scanning for better AP\n");
+                    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Roaming: scanning for better AP\n");
                     WiFi.scanNetworks(true);
                     set_state(WF_ROAM_SCAN);
                 }
@@ -413,19 +413,19 @@ void WiFiSetup::check() {
                 if (candidate_rssi > current_rssi + ROAM_HYSTERESIS_DB) {
                     should_switch = true;
                     best_idx = try_order[0];
-                    Log::logf(CAT_TCP, LOG_INFO,
+                    Log::logf(CAT_WIFI, LOG_INFO,
                               "[WIFI] Candidate '%s' %d dBm beats current %d dBm by >=%d\n",
                               cfg.wifi_nets[best_idx].ssid.c_str(),
                               candidate_rssi, current_rssi, ROAM_HYSTERESIS_DB);
                 } else {
-                    Log::logf(CAT_TCP, LOG_DEBUG,
+                    Log::logf(CAT_WIFI, LOG_DEBUG,
                               "[WIFI] Candidate '%s' %d dBm vs current %d dBm (<%d hysteresis), staying\n",
                               cfg.wifi_nets[try_order[0]].ssid.c_str(),
                               candidate_rssi, current_rssi, ROAM_HYSTERESIS_DB);
                 }
             }
             if (should_switch && best_idx < cfg.wifi_net_count) {
-                Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Roaming to '%s'\n",
+                Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Roaming to '%s'\n",
                           cfg.wifi_nets[best_idx].ssid.c_str());
                 WiFi.disconnect();
                 delay(100);
@@ -444,7 +444,7 @@ void WiFiSetup::check() {
     case WF_AP_FALLBACK:
         if (millis() - last_ap_retry >= AP_RETRY_INTERVAL_MS) {
             last_ap_retry = millis();
-            Log::logf(CAT_TCP, LOG_DEBUG, "[WIFI] AP fallback: retrying scan\n");
+            Log::logf(CAT_WIFI, LOG_DEBUG, "[WIFI] AP fallback: retrying scan\n");
             WiFi.scanNetworks(true);
             set_state(WF_SCANNING);
         }
@@ -453,13 +453,13 @@ void WiFiSetup::check() {
     case WF_SMARTCONFIG:
         if (WiFi.smartConfigDone()) {
             WiFi.stopSmartConfig();
-            Log::logf(CAT_TCP, LOG_INFO, "[WIFI] SmartConfig: got '%s'\n", WiFi.SSID().c_str());
+            Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] SmartConfig: got '%s'\n", WiFi.SSID().c_str());
             // add to list, replace oldest if full
             if (!Config::add_network(WiFi.SSID().c_str(), WiFi.psk().c_str())) {
                 // full, shift all down
                 Config::remove_network(0);
                 Config::add_network(WiFi.SSID().c_str(), WiFi.psk().c_str());
-                Log::logf(CAT_TCP, LOG_INFO, "[WIFI] SmartConfig: replaced oldest network\n");
+                Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] SmartConfig: replaced oldest network\n");
             }
             cfg.wifi_mode = 0;
             Config::save();
@@ -469,7 +469,7 @@ void WiFiSetup::check() {
             else set_state(WF_CONNECTING);  // already began in SmartConfig
         } else if (elapsed > SMARTCONFIG_TIMEOUT_MS) {
             WiFi.stopSmartConfig();
-            Log::logf(CAT_TCP, LOG_WARN, "[WIFI] SmartConfig timeout\n");
+            Log::logf(CAT_WIFI, LOG_WARN, "[WIFI] SmartConfig timeout\n");
             enter_ap_fallback();
         }
         break;
@@ -508,12 +508,12 @@ void WiFiSetup::set_fallback_time(int year, int month, int day, int hour, int mi
         tzset();
     }
 
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Fallback time from ResMed: %04d-%02d-%02d %02d:%02d\n",
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Fallback time from ResMed: %04d-%02d-%02d %02d:%02d\n",
               year, month, day, hour, min);
 }
 
 void WiFiSetup::force_ntp_sync() {
-    Log::logf(CAT_TCP, LOG_INFO, "[WIFI] Forcing NTP resync\n");
+    Log::logf(CAT_WIFI, LOG_INFO, "[WIFI] Forcing NTP resync\n");
     sync_ntp();
 }
 

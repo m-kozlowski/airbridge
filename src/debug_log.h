@@ -15,11 +15,11 @@ typedef enum {
     CAT_GENERAL = 0,
     CAT_OXI,
     CAT_TCP,
+    CAT_WIFI,
     CAT_OTA,
     CAT_WEB,
     CAT_ARB,
     CAT_HEALTH,
-    CAT_INIT,
     CAT_COUNT
 } log_cat_t;
 
