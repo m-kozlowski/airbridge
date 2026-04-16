@@ -48,7 +48,7 @@ namespace OxiBle {
 
     void task(void *param);
 
-    const oxi_scan_result_t *get_scan_results(int &count);
+    int get_scan_results(oxi_scan_result_t *out, int max);
 
     int get_all_known(char addrs[][18], int max);
     bool remove_known(const char *addr);

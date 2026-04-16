@@ -613,8 +613,8 @@ static void handleBleStatus(AsyncWebServerRequest *request) {
     jsonAddString(json, "auto_start", cfg.oxi_auto_start ? "yes" : "no");
 
 
-    int scan_count = 0;
-    const oxi_scan_result_t *devs = OxiBle::get_scan_results(scan_count);
+    oxi_scan_result_t devs[MAX_SCAN_RESULTS];
+    int scan_count = OxiBle::get_scan_results(devs, MAX_SCAN_RESULTS);
     json += ",\"devices\":[";
     for (int i = 0; i < scan_count; i++) {
         if (i > 0) json += ',';

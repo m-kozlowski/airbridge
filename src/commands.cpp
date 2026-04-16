@@ -71,8 +71,8 @@ void dispatch_command(const char *line, String &response) {
             OxiBle::start_scan();
             response = "OK: BLE scan started\n";
         } else if (sub == "RESULTS") {
-            int count = 0;
-            const oxi_scan_result_t *devs = OxiBle::get_scan_results(count);
+            oxi_scan_result_t devs[MAX_SCAN_RESULTS];
+            int count = OxiBle::get_scan_results(devs, MAX_SCAN_RESULTS);
             if (count == 0) {
                 response = "(no oximeters found)\n";
             } else {

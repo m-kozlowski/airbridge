@@ -717,11 +717,14 @@ void OxiBle::enable() {
 oxi_state_t OxiBle::get_state()            { return state; }
 bool OxiBle::state_changed()               { bool d = state_dirty; state_dirty = false; return d; }
 
-const oxi_scan_result_t *OxiBle::get_scan_results(int &count) {
+int OxiBle::get_scan_results(oxi_scan_result_t *out, int max) {
+    if (!out || max <= 0) return 0;
+    int n = 0;
     if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
-    count = scan_result_count;
+    n = (scan_result_count < max) ? scan_result_count : max;
+    for (int i = 0; i < n; i++) out[i] = scan_results[i];  // String deep-copy
     if (scan_mutex) xSemaphoreGive(scan_mutex);
-    return scan_results;
+    return n;
 }
 
 int OxiBle::get_all_known(char addrs[][18], int max) {
