@@ -40,6 +40,9 @@ typedef enum { CONN_NONE, CONN_AUTO, CONN_USER } connect_mode_t;
 static volatile connect_mode_t connect_mode = CONN_NONE;
 static volatile bool disconnect_requested = false;  // drop connection, stay enabled
 static volatile bool disable_requested = false;     // drop connection, disable scanning
+static volatile bool del_one_requested = false;
+static volatile bool del_all_requested = false;
+static char del_one_addr[18] = "";
 
 #define USER_CONNECT_RETRIES  3
 #define USER_RETRY_DELAY_MS   2000
@@ -453,6 +456,29 @@ void OxiBle::task(void *param) {
             set_state(OXI_DISCONNECTED);
         }
 
+        if (del_one_requested) {
+            del_one_requested = false;
+            char addr[18];
+            strncpy(addr, del_one_addr, sizeof(addr));
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Remove-known requested: %s\n", addr);
+            NimBLEDevice::getScan()->stop();
+            if (pClient->isConnected()) pClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(200));
+            bool ok = do_remove_known(addr);
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Remove-known %s: %s\n",
+                      addr, ok ? "done" : "not found");
+        }
+
+        if (del_all_requested) {
+            del_all_requested = false;
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] Clear-all-known requested\n");
+            NimBLEDevice::getScan()->stop();
+            if (pClient->isConnected()) pClient->disconnect();
+            vTaskDelay(pdMS_TO_TICKS(200));
+            do_clear_all_known();
+            Log::logf(CAT_OXI, LOG_INFO, "[OXI] All known devices cleared\n");
+        }
+
         if (scan_complete) {
             scan_complete = false;
             if (state == OXI_SCANNING) {
@@ -752,10 +778,9 @@ int OxiBle::get_all_known(char addrs[][18], int max) {
     return n;
 }
 
-bool OxiBle::remove_known(const char *addr) {
+// Internal: must run on the BLE task (touches NimBLE + NVS).
+static bool do_remove_known(const char *addr) {
     bool removed = false;
-    // Try NimBLE bond first
-    NimBLEDevice::getScan()->stop();
     int nb = NimBLEDevice::getNumBonds();
     for (int i = 0; i < nb; i++) {
         NimBLEAddress ba = NimBLEDevice::getBondedAddress(i);
@@ -766,13 +791,22 @@ bool OxiBle::remove_known(const char *addr) {
             break;
         }
     }
-    // Also remove from known list
     if (known_remove(addr)) removed = true;
     return removed;
 }
 
-void OxiBle::clear_all_known() {
-    NimBLEDevice::getScan()->stop();
+static void do_clear_all_known() {
     NimBLEDevice::deleteAllBonds();
     known_clear();
+}
+
+void OxiBle::request_remove_known(const char *addr) {
+    if (!addr) return;
+    strncpy(del_one_addr, addr, sizeof(del_one_addr) - 1);
+    del_one_addr[sizeof(del_one_addr) - 1] = '\0';
+    del_one_requested = true;
+}
+
+void OxiBle::request_clear_all_known() {
+    del_all_requested = true;
 }

@@ -51,6 +51,9 @@ namespace OxiBle {
     int get_scan_results(oxi_scan_result_t *out, int max);
 
     int get_all_known(char addrs[][18], int max);
-    bool remove_known(const char *addr);
-    void clear_all_known();
+
+    // Async: enqueue a deletion request. Actual stop-scan / disconnect /
+    // unpair happens in the BLE task. Safe to call from any context.
+    void request_remove_known(const char *addr);
+    void request_clear_all_known();
 }

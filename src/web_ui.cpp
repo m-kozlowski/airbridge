@@ -691,29 +691,25 @@ static void handleBleAction(AsyncWebServerRequest *request) {
         ok = true;
     } else if (action == "delete_bond") {
         if (addr.length() > 0) {
-            OxiBle::stop_scan();
-            OxiBle::disconnect();
-            vTaskDelay(pdMS_TO_TICKS(500));
-            bool deleted = OxiBle::remove_known(addr.c_str());
-            if (deleted && strcasecmp(addr.c_str(), Config::get().oxi_device_addr.c_str()) == 0) {
+            // Clear the configured device addr synchronously if it matches.
+            if (strcasecmp(addr.c_str(), Config::get().oxi_device_addr.c_str()) == 0) {
                 Config::set_value("oxi_device_addr", "");
                 Config::save();
             }
-            result = deleted ? "device removed" : "device not found";
+            OxiBle::request_remove_known(addr.c_str());
+            result = "queued";
+            ok = true;
         } else {
             result = "no address specified";
+            ok = true;
         }
-        ok = true;
     } else if (action == "delete_all_bonds") {
-        OxiBle::stop_scan();
-        OxiBle::disconnect();
-        vTaskDelay(pdMS_TO_TICKS(500));
-        OxiBle::clear_all_known();
         if (Config::get().oxi_device_addr.length() > 0) {
             Config::set_value("oxi_device_addr", "");
             Config::save();
         }
-        result = "all devices removed";
+        OxiBle::request_clear_all_known();
+        result = "queued";
         ok = true;
     }
 
