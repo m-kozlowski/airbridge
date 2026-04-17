@@ -23,14 +23,6 @@ void qframe_parser_reset(qframe_parser_t *p) {
     p->state = QFP_IDLE;
 }
 
-bool qframe_parser_complete(const qframe_parser_t *p) {
-    return p->state == QFP_COMPLETE;
-}
-
-bool qframe_parser_error(const qframe_parser_t *p) {
-    return p->state == QFP_ERROR;
-}
-
 const qframe_t* qframe_parser_frame(const qframe_parser_t *p) {
     return (p->state == QFP_COMPLETE) ? &p->frame : NULL;
 }

@@ -11,7 +11,6 @@
 #define RX_BUF_SIZE             1024
 
 static HardwareSerial *uart = nullptr;
-static QueueHandle_t cmd_queue = nullptr;
 static TaskHandle_t arbiter_task_handle = nullptr;
 static TaskHandle_t rx_task_handle = nullptr;
 

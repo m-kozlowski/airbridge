@@ -122,7 +122,6 @@ public:
 };
 
 static DebugPrint debug_print;
-static bool debug_registered = false;
 
 void TcpBridge::init_debug_server(uint16_t port) {
     if (port == 0) return;
@@ -130,7 +129,6 @@ void TcpBridge::init_debug_server(uint16_t port) {
     debug_server->begin();
     debug_server->setNoDelay(true);
     Log::add_output(&debug_print);
-    debug_registered = true;
     Log::logf(CAT_TCP, LOG_INFO, "[DBG] Debug server on port %d\n", port);
 }
 

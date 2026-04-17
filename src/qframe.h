@@ -56,8 +56,6 @@ void        qframe_parser_reset(qframe_parser_t *p);
 
 bool        qframe_parser_feed(qframe_parser_t *p, uint8_t byte);
 
-bool        qframe_parser_complete(const qframe_parser_t *p);
-bool        qframe_parser_error(const qframe_parser_t *p);
 const qframe_t* qframe_parser_frame(const qframe_parser_t *p);
 
 int         qframe_build(uint8_t type, const uint8_t *payload, uint16_t payload_len,
