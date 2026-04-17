@@ -421,6 +421,9 @@ static void set_viatom_datetime() {
 }
 
 
+static bool do_remove_known(const char *addr);
+static void do_clear_all_known();
+
 void OxiBle::task(void *param) {
     scan_mutex = xSemaphoreCreateMutex();
     known_load();
