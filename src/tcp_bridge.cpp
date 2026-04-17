@@ -179,14 +179,6 @@ void TcpBridge::task(void *param) {
     server->setNoDelay(true);
     Log::logf(CAT_TCP, LOG_INFO, "[TCP] Listening on port %d\n", cfg.tcp_port);
 
-    if (cfg.debug_port > 0 && cfg.debug_port != cfg.tcp_port) {
-        init_debug_server(cfg.debug_port);
-    }
-
-    if (cfg.http_port > 0 && cfg.http_port != cfg.tcp_port) {
-        WebUI::init(cfg.http_port);
-    }
-
     while (true) {
         if (!client || !client.connected()) {
             WiFiClient newClient = server->accept();

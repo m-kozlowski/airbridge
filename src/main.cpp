@@ -156,7 +156,16 @@ void setup() {
     TcpBridge::init();
     Log::logf(CAT_GENERAL, LOG_INFO, "[INIT] TCP bridge started\n");
 
-    if (wifi_ok) OtaManager::init();
+    if (wifi_ok) {
+        auto &cfg = Config::get();
+        if (cfg.debug_port > 0 && cfg.debug_port != cfg.tcp_port)
+            TcpBridge::init_debug_server(cfg.debug_port);
+
+        if (cfg.http_port > 0 && cfg.http_port != cfg.tcp_port)
+            WebUI::init(cfg.http_port);
+
+        OtaManager::init();
+    }
 
     // If NTP didn't sync, fall back to resmed device clock
     if (!WiFiSetup::time_synced()) pull_time_from_resmed();
