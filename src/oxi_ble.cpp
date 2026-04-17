@@ -726,9 +726,6 @@ void OxiBle::task(void *param) {
             }
         }
 
-        // Arbiter handles injection timing and source gating
-        OxiArbiter::poll();
-
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }

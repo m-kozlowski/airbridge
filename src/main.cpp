@@ -256,6 +256,8 @@ void loop() {
 
     sync_resmed_clock();
 
+    OxiArbiter::poll();
+
     // health monitoring
     if (millis() - last_health_poll >= HEALTH_POLL_INTERVAL_MS) {
         last_health_poll = millis();
