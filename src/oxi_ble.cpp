@@ -540,18 +540,23 @@ void OxiBle::task(void *param) {
 
         if (scan_requested && !ble_suspended) {
             scan_requested = false;
-            if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
-            scan_result_count = 0;
-            if (scan_mutex) xSemaphoreGive(scan_mutex);
-            scan_complete = false;
-            set_state(OXI_SCANNING);
-            Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Starting scan (%dms)\n", SCAN_DURATION_MS);
             NimBLEScan *pScan = NimBLEDevice::getScan();
-            pScan->setScanCallbacks(&scanCB);
-            pScan->setActiveScan(true);
-            pScan->setInterval(100);
-            pScan->setWindow(99);
-            pScan->start(SCAN_DURATION_MS);
+            if (pScan->isScanning()) {
+                Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] scan_requested ignored, scan already in progress\n");
+            } else {
+                if (scan_mutex) xSemaphoreTake(scan_mutex, portMAX_DELAY);
+                scan_result_count = 0;
+                if (scan_mutex) xSemaphoreGive(scan_mutex);
+                scan_complete = false;
+                pScan->clearResults();   // defeat NimBLE dedup across scans
+                set_state(OXI_SCANNING);
+                Log::logf(CAT_OXI, LOG_DEBUG, "[OXI] Starting scan (%dms)\n", SCAN_DURATION_MS);
+                pScan->setScanCallbacks(&scanCB);
+                pScan->setActiveScan(true);
+                pScan->setInterval(100);
+                pScan->setWindow(99);
+                pScan->start(SCAN_DURATION_MS);
+            }
         }
 
         if (connect_mode != CONN_NONE && !ble_suspended) {
