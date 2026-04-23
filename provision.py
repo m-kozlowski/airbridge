@@ -47,22 +47,36 @@ def parse_provision_file(path):
     return entries
 
 
+_LOG_PREFIXES = ("[OXI]", "[TCP]", "[WIFI]", "[OTA]", "[WEB]", "[ARB]",
+                 "[HEALTH]", "[DBG]", "[INIT]", "[MIG]", "[GENERAL]")
+
+
+def _is_log_line(line):
+    return any(line.startswith(p) for p in _LOG_PREFIXES)
+
+
 def send_command(ser, cmd, expect_ok=True):
     ser.reset_input_buffer()
     ser.write((cmd + "\n").encode())
     ser.flush()
-    time.sleep(0.1)
 
-    response = ""
+    # Read line-by-line filtering async log noise. Stop when the serial goes idle
+    ser.timeout = 0.3
+    lines = []
     deadline = time.time() + TIMEOUT
     while time.time() < deadline:
-        if ser.in_waiting:
-            response += ser.read(ser.in_waiting).decode(errors="ignore")
-            if "\n" in response:
-                break
-        time.sleep(0.05)
-
-    return response.strip()
+        raw = ser.readline()
+        if not raw:
+            if lines:
+                break  # idle
+            continue
+        line = raw.decode(errors="ignore").rstrip("\r\n")
+        if not line:
+            continue
+        if _is_log_line(line):
+            continue
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def provision(port):
@@ -102,8 +116,8 @@ def provision(port):
 
     errors = 0
     for key, value in entries:
-        resp = send_command(ser, f"$CONFIG SET {key} {value}")
-        if "OK" in resp or "ok" in resp or key in resp:
+        resp = send_command(ser, f"$CONFIG {key} {value}")
+        if resp.startswith("OK"):
             print(f"    {key} = {value if 'pass' not in key else '****'}")
         else:
             print(f"    {key}: FAILED ({resp})")
