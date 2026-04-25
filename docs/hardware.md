@@ -26,8 +26,8 @@ Hot-plugging the stepdown module may trip the AirSense overcurrent protection, c
     AirSense 10                          M5Stamp Pico
     Edge Connector                       +-----------+
                                          |           |
-    Tx  -------------------------------- G36 (RX)    |
-    Rx  -------------------------------- G26 (TX)    |
+    Tx  -------------------------------- G36 (RX)    |  (pin definitions can be set
+    Rx  -------------------------------- G26 (TX)    |   in include/board.h)
     GND ----------------+--------------- GND         |
                         |                |           |
     +24V ---[47R]--+    |    +--------> 3V3          |
