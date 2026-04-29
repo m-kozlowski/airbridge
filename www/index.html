@@ -132,7 +132,7 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Bottom nav (mobile) */
-.bottom-nav{display:none;background:var(--surface);border-top:1px solid var(--border);justify-content:flex-start;padding:8px 0;position:fixed;bottom:0;left:0;right:0;z-index:100;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.bottom-nav{display:none;background:var(--surface);border-top:1px solid var(--border);justify-content:flex-start;padding:8px 0;padding-bottom:calc(8px + env(safe-area-inset-bottom));position:fixed;bottom:0;left:0;right:0;z-index:100;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .bottom-nav .bnav-item{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text-dim);cursor:pointer;padding:4px 10px;text-decoration:none;flex-shrink:0;white-space:nowrap}
 .bottom-nav .bnav-item .icon{font-size:18px}
 .bottom-nav .bnav-item.active{color:var(--accent)}
@@ -142,7 +142,7 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
   .app{grid-template-columns:1fr}
   .sidebar{display:none}
   .bottom-nav{display:flex}
-  .content{padding:16px;padding-bottom:72px}
+  .content{padding:16px;padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   .card-grid{grid-template-columns:1fr}
   .chart-row-2{grid-template-columns:1fr}
   .topbar{padding:10px 16px}
