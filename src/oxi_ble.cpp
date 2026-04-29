@@ -188,6 +188,8 @@ static void nonin_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size
 static NimBLERemoteCharacteristic *viatom_write_chr = nullptr;
 static uint8_t viatom_invalid_count = 0;
 #define VIATOM_MAX_INVALID  15  // disconnect after 15 invalid readings (~30s)
+#define VIATOM_WRITE_CHUNK_LEN 20
+#define VIATOM_WRITE_CHUNK_DELAY_MS 50
 
 static void viatom_notify_cb(NimBLERemoteCharacteristic *chr, uint8_t *data, size_t len, bool isNotify) {
     // debug
@@ -413,7 +415,20 @@ static void set_viatom_datetime() {
     uint8_t crc = crc8_ccitt(pkt, 7 + json_len);
     pkt[7 + json_len] = crc;
 
-    if (viatom_write_chr->writeValue(pkt, pkt_len, false)) {
+    bool ok = true;
+    for (int off = 0; off < pkt_len; off += VIATOM_WRITE_CHUNK_LEN) {
+        int chunk_len = pkt_len - off;
+        if (chunk_len > VIATOM_WRITE_CHUNK_LEN) chunk_len = VIATOM_WRITE_CHUNK_LEN;
+        if (!viatom_write_chr->writeValue(pkt + off, chunk_len, false)) {
+            ok = false;
+            break;
+        }
+        if (off + chunk_len < pkt_len) {
+            vTaskDelay(pdMS_TO_TICKS(VIATOM_WRITE_CHUNK_DELAY_MS));
+        }
+    }
+
+    if (ok) {
         Log::logf(CAT_OXI, LOG_INFO, "[OXI] Viatom datetime set: %s\n", json);
     } else {
         Log::logf(CAT_OXI, LOG_WARN, "[OXI] Viatom datetime write failed\n");
