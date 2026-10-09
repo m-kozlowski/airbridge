@@ -5,6 +5,7 @@
 #include "oxi_arbiter.h"
 #include "oxi_ble.h"
 #include "sleep_report.h"
+#include "sd_storage.h"
 #include <string.h>
 
 namespace DeviceStatus {
@@ -25,6 +26,7 @@ struct Snapshot {
     EdfReport::State report_state = EdfReport::State::Blocked;
     char report_error[48] = {};
     bool report_available = false;
+    SdStorage::Status storage = {};
 };
 
 // Copy published owner state only; presentation must not query the device.
@@ -48,6 +50,7 @@ inline Snapshot snapshot() {
     out.report_state = report.local.state;
     memcpy(out.report_error, report.local.error, sizeof(out.report_error));
     out.report_available = report.local.available;
+    SdStorage::get_status(out.storage);
     return out;
 }
 

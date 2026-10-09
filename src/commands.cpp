@@ -106,7 +106,7 @@ void dispatch_command(const char *line, String &response) {
             SdStorage::Status sd;
             SdStorage::get_status(sd);
             response = "state: ";
-            response += !sd.supported ? "unsupported" : sd.mounted ? "mounted" : "unavailable";
+            response += SdStorage::state_name(sd);
             response += '\n';
             if (sd.mounted) {
                 if (sd.total_bytes && sd.used_bytes <= sd.total_bytes) {
@@ -131,6 +131,19 @@ void dispatch_command(const char *line, String &response) {
                 if (status.error[0]) response += "operation_error: " + String(status.error) + "\n";
             }
 #endif
+            return;
+        }
+        if (action == "USB") {
+            String value = path;
+            value.toUpperCase();
+            if ((value != "ON" && value != "OFF") || !parse_quoted_token(cmd, &position).isEmpty()) {
+                response = "ERR: usage: $STORAGE USB ON|OFF\n";
+                return;
+            }
+            const char *error = nullptr;
+            response = SdStorage::request_usb(value == "ON", &error)
+                ? "OK: USB handoff requested; $STORAGE STATUS for result\n"
+                : "ERR: " + String(error) + "\n";
             return;
         }
 #if AB_STORAGE_HAS_SDCARD
@@ -712,6 +725,7 @@ void dispatch_command(const char *line, String &response) {
                    "  STORAGE RM path     Delete a file or folder recursively\n"
 #endif
                    "  STORAGE STATUS      SD state, space and last file operation\n"
+                   "  STORAGE USB ON|OFF  Share SD over USB / return after disconnect\n"
                    "  FLASH [block] [BLX] [FORCE]  Flash uploaded firmware\n"
                    "  FLASH STATUS|CANCEL Monitor/cancel flash\n"
                    "  LOG                 Show all category log levels\n"

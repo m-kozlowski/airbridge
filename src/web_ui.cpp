@@ -357,7 +357,8 @@ static void statusClocks(char (&esp_time)[20], char (&resmed_time)[20]) {
 
 enum StatusFields : uint8_t {
     STATUS_THERAPY = 1, STATUS_OXI = 2, STATUS_HEALTH = 4,
-    STATUS_CONFIG = 8, STATUS_IDENTITY = 16, STATUS_REPORT = 32, STATUS_ALL = 63,
+    STATUS_CONFIG = 8, STATUS_IDENTITY = 16, STATUS_REPORT = 32,
+    STATUS_STORAGE = 64, STATUS_ALL = 127,
 };
 
 template<class Output>
@@ -386,22 +387,23 @@ static void appendStatusFields(Output &json, const DeviceStatus::Snapshot &statu
         statusClocks(esp_time, resmed_time);
         jsonAddString(json, "esp_time", esp_time);
         jsonAddString(json, "resmed_time", resmed_time);
-#if AB_STORAGE_HAS_SDCARD
-        SdStorage::Status sd;
-        SdStorage::get_status(sd);
-        jsonAddString(json, "sd", !sd.supported ? "unsupported" :
-                       sd.mounted ? "mounted" : "unavailable");
-        jsonAddInt(json, "sd_total_mb", sd.card_bytes / (1024 * 1024));
-        jsonAddInt(json, "sd_used_mb", sd.used_bytes / (1024 * 1024));
-#else
-        jsonAddString(json, "sd", "unsupported");
-#endif
         jsonAddInt(json, "heap", ESP.getFreeHeap());
         jsonAddInt(json, "psram_free", aircannect::Memory::psram_available() ?
                    static_cast<int>(ESP.getFreePsram()) : -1);
         jsonAddString(json, "ssid", WiFiSetup::connected_ssid());
         jsonAddInt(json, "rssi", WiFiSetup::current_rssi());
         jsonAddInt(json, "uptime", millis() / 1000);
+    }
+    if (fields & STATUS_STORAGE) {
+        const auto &sd = status.storage;
+        jsonAddString(json, "sd", SdStorage::state_name(sd));
+#if AB_STORAGE_HAS_SDCARD
+        jsonAddInt(json, "sd_total_mb", sd.card_bytes / (1024 * 1024));
+        jsonAddInt(json, "sd_used_mb", sd.used_bytes / (1024 * 1024));
+        jsonAddBool(json, "sd_usb_supported", sd.usb_supported);
+        jsonAddBool(json, "sd_usb_can_stop", sd.usb_can_stop);
+        jsonAddString(json, "sd_error", sd.error);
+#endif
     }
     if (fields & STATUS_OXI) {
         const auto &r = status.reading;
@@ -2210,6 +2212,25 @@ private:
     std::shared_ptr<StorageBrowser::Transfer> transfer_;
 };
 
+static void handleStorageUsb(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+    const String enabled = request->hasParam("enabled", true)
+        ? request->getParam("enabled", true)->value() : "";
+    if (enabled != "0" && enabled != "1") {
+        request->send(400, "application/json", "{\"error\":\"enabled must be 0 or 1\"}");
+        return;
+    }
+    const char *error = nullptr;
+    if (!SdStorage::request_usb(enabled == "1", &error)) {
+        String json = "{";
+        jsonAddString(json, "error", error, false);
+        json += '}';
+        request->send(409, "application/json", json);
+        return;
+    }
+    request->send(202, "application/json", "{\"ok\":true}");
+}
+
 static void handleStorage(AsyncWebServerRequest *request, StorageBrowser::Kind kind) {
     if (!checkAuth(request)) return;
     StorageBrowser::Request operation = {};
@@ -2348,6 +2369,7 @@ void WebUI::init(uint16_t port) {
     http->on("/api/export/smb", HTTP_POST, [](AsyncWebServerRequest *r) { handleExportRequest(r, true); });
     http->on("/api/export/sleephq", HTTP_POST, [](AsyncWebServerRequest *r) { handleExportRequest(r, false); });
 #if AB_STORAGE_HAS_SDCARD
+    http->on("/api/storage/usb", HTTP_POST, handleStorageUsb);
     http->on("/api/storage/list", HTTP_GET, [](AsyncWebServerRequest *r) {
         handleStorage(r, StorageBrowser::Kind::List);
     });
@@ -2406,6 +2428,12 @@ static uint8_t statusChanges(const DeviceStatus::Snapshot &a,
         a.report_state != b.report_state || strcmp(a.report_error, b.report_error) ||
         a.report_available != b.report_available)
         fields |= STATUS_REPORT;
+    if (a.storage.mode != b.storage.mode || a.storage.mounted != b.storage.mounted ||
+        a.storage.supported != b.storage.supported ||
+        a.storage.card_bytes != b.storage.card_bytes || a.storage.used_bytes != b.storage.used_bytes ||
+        a.storage.usb_supported != b.storage.usb_supported ||
+        a.storage.usb_can_stop != b.storage.usb_can_stop || strcmp(a.storage.error, b.storage.error))
+        fields |= STATUS_STORAGE;
     return fields;
 }
 

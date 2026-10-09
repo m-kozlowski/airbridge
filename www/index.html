@@ -630,6 +630,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
             <button class="btn" id="storageRefresh" onclick="loadStorage()">Refresh</button>
           </div>
           <div class="storage-actions">
+            <button class="btn" id="storageUsb" onclick="storageUsb()" hidden>Share via USB</button>
             <button class="btn" id="storageZip" onclick="storageDownload('archive')">Download folder ZIP</button>
             <button class="btn btn-accent" id="storageSelected" onclick="storageDownload('archive', null, true)">Download selected ZIP</button>
             <button class="btn btn-danger" id="storageDelete" onclick="storageDelete()">Delete selected</button>
@@ -2954,7 +2955,10 @@ function renderExports(changed = null) {
 }
 
 let storagePath = '/', storageOffset = 0, storageMore = false, storageLoading = false;
+let storageUsbRequest = false, storageListAbort = null, storageViewState = '';
 const storageSelection = new Set();
+const STORAGE_STATES = {mounted:'Mounted', unavailable:'Card unavailable', unsupported:'Not supported',
+  usb_starting:'Preparing USB', usb:'Shared via USB', usb_stopping:'Returning to AirBridge'};
 
 function renderDashboardStorage(data) {
   const summary = document.getElementById('dashStorageSummary');
@@ -2966,7 +2970,7 @@ function renderDashboardStorage(data) {
     Number.isFinite(used) && used >= 0;
   meter.hidden = !mounted;
   if (!mounted) {
-    summary.textContent = !data.sd || data.sd === 'unsupported' ? 'Not supported' : 'Card unavailable';
+    summary.textContent = STORAGE_STATES[data.sd] || 'Not supported';
     fill.style.width = '0%';
     meter.removeAttribute('aria-valuenow');
     return;
@@ -2983,35 +2987,76 @@ function renderStorageStatus(data) {
   if (data.sd === undefined) return;
   const supported = data.sd !== 'unsupported';
   document.querySelectorAll('[data-tab="storage"]').forEach(link => { link.hidden = !supported; });
-  document.getElementById('storageState').textContent = !supported ? 'Not supported' :
-    data.sd === 'mounted' ? 'Mounted' : 'Card unavailable';
+  document.getElementById('storageState').textContent = STORAGE_STATES[data.sd] || 'Card unavailable';
   document.getElementById('storageUsage').textContent = data.sd === 'mounted' ?
     (data.sd_used_mb || 0) + ' MiB used / ' + (data.sd_total_mb || 0) + ' MiB total' : '';
+  const usb = document.getElementById('storageUsb');
+  usb.hidden = !data.sd_usb_supported;
+  usb.textContent = data.sd === 'mounted' ? 'Share via USB' : 'Return to AirBridge';
+  if (data.sd !== 'mounted') {
+    if (storageListAbort) storageListAbort.abort();
+    storageSelection.clear();
+    document.getElementById('storageEntries').replaceChildren();
+    document.getElementById('storagePage').textContent = '';
+    document.getElementById('storageMessage').textContent = data.sd_error ||
+      ({usb_starting:'Closing local files...', usb:'Recording paused. Safely eject the USB drive on your computer to resume.',
+        usb_stopping:'Remounting SD card...'}[data.sd] || '');
+  } else if (storageViewState && storageViewState !== 'mounted') {
+    document.getElementById('storageMessage').textContent = data.sd_error || 'Refresh to browse the card.';
+  }
+  storageViewState = data.sd;
+  storageControls();
 }
 
 function storageControls() {
-  document.getElementById('storageRefresh').disabled = storageLoading;
-  document.getElementById('storageUp').disabled = storageLoading || storagePath === '/';
-  document.getElementById('storagePrev').disabled = storageLoading || !storageOffset;
-  document.getElementById('storageNext').disabled = storageLoading || !storageMore;
-  document.getElementById('storageZip').disabled = storageLoading;
-  document.getElementById('storageSelected').disabled = storageLoading || !storageSelection.size;
-  document.getElementById('storageDelete').disabled = storageLoading || !storageSelection.size;
-  document.querySelectorAll('#storageEntries button, #storageEntries input').forEach(el => { el.disabled = storageLoading; });
+  const blocked = storageLoading || storageUsbRequest || (lastStatus.sd && lastStatus.sd !== 'mounted');
+  document.getElementById('storageRefresh').disabled = blocked;
+  document.getElementById('storageUp').disabled = blocked || storagePath === '/';
+  document.getElementById('storagePrev').disabled = blocked || !storageOffset;
+  document.getElementById('storageNext').disabled = blocked || !storageMore;
+  document.getElementById('storageZip').disabled = blocked;
+  document.getElementById('storageSelected').disabled = blocked || !storageSelection.size;
+  document.getElementById('storageDelete').disabled = blocked || !storageSelection.size;
+  document.querySelectorAll('#storageEntries button, #storageEntries input').forEach(el => { el.disabled = blocked; });
+  document.getElementById('storageUsb').disabled = storageUsbRequest ||
+    !(lastStatus.sd === 'mounted' || (lastStatus.sd === 'usb' && lastStatus.sd_usb_can_stop) ||
+      (lastStatus.sd === 'usb_stopping' && lastStatus.sd_error));
+}
+
+async function storageUsb() {
+  if (storageUsbRequest) return;
+  const enabled = lastStatus.sd === 'mounted';
+  if (enabled && !confirm('Share the SD card with this computer? Recording and other SD operations will pause until the USB drive is safely ejected.')) return;
+  storageUsbRequest = true;
+  storageControls();
+  try {
+    const response = await api('/api/storage/usb', {method:'POST', body:new URLSearchParams({enabled:enabled ? '1' : '0'})});
+    if (!response) return;
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'USB handoff failed');
+  } catch (error) {
+    document.getElementById('storageMessage').textContent = error.message;
+  } finally {
+    storageUsbRequest = false;
+    storageControls();
+  }
 }
 
 function storageChild(name) { return (storagePath === '/' ? '' : storagePath) + '/' + name; }
 
 async function loadStorage(path = storagePath, offset = storageOffset) {
-  if (storageLoading) return;
+  if (storageLoading || storageUsbRequest || (lastStatus.sd && lastStatus.sd !== 'mounted')) return;
+  const controller = new AbortController();
+  storageListAbort = controller;
   storageLoading = true;
   storageControls();
   const message = document.getElementById('storageMessage');
   message.textContent = 'Reading directory...';
   try {
-    const response = await api('/api/storage/list?path=' + encodeURIComponent(path) + '&offset=' + offset);
+    const response = await api('/api/storage/list?path=' + encodeURIComponent(path) + '&offset=' + offset, {signal:controller.signal});
     if (!response) return;
     const data = await response.json();
+    if (controller.signal.aborted) return;
     if (!response.ok || !data.ok) throw new Error(data.error || 'Directory unavailable');
     storagePath = data.path;
     storageOffset = offset;
@@ -3051,8 +3096,8 @@ async function loadStorage(path = storagePath, offset = storageOffset) {
     document.getElementById('storagePage').textContent = 'Page ' + (offset / 32 + 1);
     message.textContent = data.entries.length ? '' : 'This directory is empty.';
   } catch (error) {
-    message.textContent = error.message;
-  } finally { storageLoading = false; storageControls(); }
+    if (!controller.signal.aborted) message.textContent = error.message;
+  } finally { storageListAbort = null; storageLoading = false; storageControls(); }
 }
 
 function storageUp() {
@@ -3061,7 +3106,7 @@ function storageUp() {
 }
 
 function storageDownload(kind, name = null, selected = false) {
-  if (storageLoading) return;
+  if (storageLoading || storageUsbRequest || (lastStatus.sd && lastStatus.sd !== 'mounted')) return;
   let url = '/api/storage/' + kind + '?path=' + encodeURIComponent(name === null ? storagePath : storageChild(name));
   if (selected) {
     if (!storageSelection.size) return;
@@ -3078,7 +3123,7 @@ function storageDownload(kind, name = null, selected = false) {
 }
 
 async function storageMutate(kind, body) {
-  if (storageLoading) return;
+  if (storageLoading || storageUsbRequest || (lastStatus.sd && lastStatus.sd !== 'mounted')) return;
   storageLoading = true;
   storageControls();
   const message = document.getElementById('storageMessage');
@@ -3101,7 +3146,7 @@ async function storageMutate(kind, body) {
   }
   // A failed or interrupted recursive delete may already have removed files.
   await loadStorage(storagePath, 0);
-  message.textContent = result;
+  if (lastStatus.sd === 'mounted') message.textContent = result;
 }
 
 async function storageRename(name) {
