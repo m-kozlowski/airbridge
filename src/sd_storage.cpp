@@ -148,8 +148,9 @@ void process_request(Request &value) {
             Log::logf(CAT_STORAGE, LOG_WARN, "USB %s sector=%lu bytes=%u failed: %s\n",
                       usb_io.write ? "write" : "read", (unsigned long)usb_io.sector,
                       unsigned(usb_io.size), esp_err_to_name(result));
-        usb_io.done(result == ESP_OK);
+        const auto done = usb_io.done;
         __atomic_store_n(&usb_io_pending, false, __ATOMIC_RELEASE);
+        done(result == ESP_OK);
 #endif
     } else if (request->kind == Request::Begin) {
         if (!direct_owner && !active_session && mounted() && background_allowed()) {
@@ -452,6 +453,7 @@ void mount_card() {
 
 void advance_usb() {
 #if AB_USB_MSC_ENABLED
+    bool usb_failed = false;
     const Mode mode = __atomic_load_n(&status.mode, __ATOMIC_ACQUIRE);
     if (mode == Mode::ToUsb) {
         close_readers();
@@ -480,6 +482,7 @@ void advance_usb() {
             return;
         }
         Log::logf(CAT_STORAGE, LOG_ERROR, "USB card initialization failed: %s\n", esp_err_to_name(result));
+        usb_failed = true;
         __atomic_store_n(&status.mode, Mode::ToLocal, __ATOMIC_RELEASE);
     }
     if (__atomic_load_n(&status.mode, __ATOMIC_ACQUIRE) == Mode::ToLocal) {
@@ -495,6 +498,7 @@ void advance_usb() {
             usb_host_started = false;
         }
         mount_card();
+        if (usb_failed && mounted()) mount_error("USB card initialization failed");
         __atomic_store_n(&status.mode, Mode::Local, __ATOMIC_RELEASE);
         Log::logf(CAT_STORAGE, mounted() ? LOG_INFO : LOG_ERROR,
                   mounted() ? "SD returned from USB\n" : "SD remount after USB failed\n");

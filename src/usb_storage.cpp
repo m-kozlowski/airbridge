@@ -225,6 +225,7 @@ void poll() {
 }
 
 void expose(uint32_t sectors) {
+    USBSerial.enableReboot(false);
     __atomic_store_n(&sector_count, sectors, __ATOMIC_RELEASE);
     __atomic_add_fetch(&media_generation, 1, __ATOMIC_ACQ_REL);
     __atomic_store_n(&media_present, true, __ATOMIC_RELEASE);
@@ -233,6 +234,7 @@ void expose(uint32_t sectors) {
 void withdraw() {
     __atomic_store_n(&media_present, false, __ATOMIC_RELEASE);
     __atomic_add_fetch(&media_generation, 1, __ATOMIC_ACQ_REL);
+    USBSerial.enableReboot(true);
 }
 
 }  // namespace UsbStorage

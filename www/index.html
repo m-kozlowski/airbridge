@@ -1483,6 +1483,7 @@ function renderReportAvailability() {
   document.getElementById('reportDayNext').disabled = blocked || !reportCalendar.days.some(d => reportDate(d.day) > selected);
   document.getElementById('reportAvailability').textContent = !source ? 'Waiting for report availability.'
     : source === 'device' ? (blocked ? 'Available in standby.' : '')
+    : lastStatus.report_error === 'usb_storage' ? 'SD card is shared via USB.'
     : (lastStatus.report_error || ({waiting_storage:'Waiting for SD storage.',
         building:blocked && !reportPlot.summary ? 'Preparing report...' : '', blocked:'Local report unavailable.',
         error:'Local report error.'}[lastStatus.report_state] || ''));
@@ -3001,7 +3002,7 @@ function renderStorageStatus(data) {
     document.getElementById('storageMessage').textContent = data.sd_error ||
       ({usb_starting:'Closing local files...', usb:'Recording paused. Safely eject the USB drive on your computer to resume.',
         usb_stopping:'Remounting SD card...'}[data.sd] || '');
-  } else if (storageViewState && storageViewState !== 'mounted') {
+  } else if (data.sd_error || (storageViewState && storageViewState !== 'mounted')) {
     document.getElementById('storageMessage').textContent = data.sd_error || 'Refresh to browse the card.';
   }
   storageViewState = data.sd;

@@ -1714,6 +1714,7 @@ bool work_once() {
     if (!AirSenseState::local_background_allowed()) {
         defer_job(job); publish(State::Blocked, "not_idle"); return false;
     }
+    if (!SdStorage::local_access_allowed()) { defer_job(job); publish(State::Blocked, "usb_storage"); return false; }
     if (!SdStorage::mounted()) { defer_job(job); publish(State::Blocked, "no_sd"); return false; }
     if (!job && !dirty()) { publish(State::Ready); return false; }
     SdStorage::Session session;
@@ -1853,12 +1854,14 @@ void init() {
 
 void tick() {
     static uint32_t observed_catalog = 0, observed_files = 0;
+    const bool local = SdStorage::local_access_allowed();
     const bool mounted = SdStorage::mounted();
-    const bool available = mounted && worker_task && AirSenseState::local_background_allowed();
+    const bool available = local && mounted && worker_task && AirSenseState::local_background_allowed();
     const uint32_t catalog = EdfCatalog::revision(), files = SdStorage::files_revision();
     bool changed = false, invalidated = false;
     portENTER_CRITICAL(&status_mux);
-    if (status.mounted != mounted) {
+    // A deliberate USB unmount pauses reports, not a request to rebuild metadata.
+    if (local && status.mounted != mounted) {
         status.mounted = mounted;
         invalidated = true;
         changed = true;
@@ -1871,7 +1874,8 @@ void tick() {
     }
     if (changed) ++status.revision;
     portEXIT_CRITICAL(&status_mux);
-    if (!mounted) publish(State::Blocked, "no_sd");
+    if (!local) publish(State::Blocked, "usb_storage");
+    else if (!mounted) publish(State::Blocked, "no_sd");
     else if (!available && worker_task) publish(State::Blocked, "not_idle");
     if (wake && (changed || observed_catalog != catalog)) {
         observed_catalog = catalog;
@@ -1980,7 +1984,7 @@ int poll(uint32_t id, Result &out) {
         if (job.state != JobState::Complete) { code = 202; break; }
         Status publication;
         get_status(publication);
-        if (job.code == 200 && (!SdStorage::mounted() || !publication.mounted ||
+        if (job.code == 200 && (!SdStorage::local_access_allowed() || !SdStorage::mounted() || !publication.mounted ||
             job.data_revision != publication.data_revision ||
             SdStorage::files_revision() != publication.files_revision)) { code = 409; break; }
         EdfCatalog::Status catalog;
