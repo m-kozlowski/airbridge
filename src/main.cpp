@@ -20,6 +20,7 @@
 #include "live_tce.h"
 #include "live_web_consumer.h"
 #include "sd_storage.h"
+#include "usb_storage.h"
 #include "edf_recorder.h"
 #include "export_sync.h"
 #include "custom_settings.h"
@@ -28,7 +29,7 @@
 #include "airsense_state.h"
 #include "air10_clock.h"
 #include "board.h"
-#if defined(AB_BOARD_WROOM_S3)
+#if defined(AB_BOARD_WROOM_S3) && !AB_USB_MSC_ENABLED
 #include "hal/usb_serial_jtag_ll.h"
 
 // Rev D senses VBUS through 100k/150k. Disconnect the self-powered USB
@@ -90,7 +91,7 @@ void setup() {
 #endif
 
     Serial.begin(115200);
-#if defined(AB_BOARD_WROOM_S3)
+#if defined(AB_BOARD_WROOM_S3) && !AB_USB_MSC_ENABLED
     pinMode(14, INPUT);
     attachInterrupt(digitalPinToInterrupt(14), usb_vbus_changed, CHANGE);
     usb_vbus_changed();
@@ -155,6 +156,7 @@ void setup() {
 }
 
 void loop() {
+    UsbStorage::poll();
     serial_poll();
     ClinicalJobs::tick();
     SleepReport::tick();

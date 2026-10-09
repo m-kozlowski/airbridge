@@ -485,6 +485,7 @@ void produce(void *context) {
 
 StartResult start(const Request &request, Ready ready, std::weak_ptr<Transfer> &active) {
     if (!valid_request(request)) return StartResult::BadRequest;
+    if (!SdStorage::local_access_allowed() || !SdStorage::mounted()) return StartResult::Unavailable;
     bool expected = false;
     if (!busy.compare_exchange_strong(expected, true)) {
         Log::logf(CAT_STORAGE, LOG_DEBUG, "%s storage_busy path=%s\n", kind_name(request.kind), request.path);

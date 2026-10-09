@@ -54,6 +54,10 @@
 #define AB_STORAGE_HAS_SDCARD (AB_STORAGE_SDMMC_ENABLED != 0)
 #endif
 
+#ifndef AB_USB_MSC_ENABLED
+#define AB_USB_MSC_ENABLED 0
+#endif
+
 // Backward-compatible aliases used by the current firmware.
 #define PIN_AS10_TX     AB_AS10_TX_GPIO
 #define PIN_AS10_RX     AB_AS10_RX_GPIO

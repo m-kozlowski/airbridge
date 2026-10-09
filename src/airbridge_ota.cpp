@@ -1,4 +1,5 @@
 #include "airbridge_ota.h"
+#include "sd_storage.h"
 
 #include "app_config.h"
 #include "build_info.h"
@@ -305,7 +306,7 @@ bool start_worker(TaskFunction_t function, const char *name) {
 }
 
 bool background_work_idle() {
-    return !OxiArbiter::is_feeding() && !ExportSync::busy();
+    return SdStorage::local_access_allowed() && !OxiArbiter::is_feeding() && !ExportSync::busy();
 }
 
 const char *start_blocked() {
@@ -372,7 +373,8 @@ bool request_reboot(bool (*prepare)()) {
         return false;
     }
     const char *rejected = nullptr;
-    if (prepare) {
+    if (!SdStorage::local_access_allowed()) rejected = "usb_storage_active";
+    if (!rejected && prepare) {
         if (runtime.operation != OP_NONE || ResmedOta::is_active()) rejected = "ota_busy";
         else if (runtime.reboot_pending) rejected = "reboot_pending";
         else rejected = reboot_image_blocked();

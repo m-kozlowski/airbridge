@@ -222,7 +222,7 @@ static void post_error(const char *message) {
 }
 
 static bool post_processing_cancelled() {
-    return !AirSenseState::device_standby() ||
+    return !SdStorage::local_access_allowed() || !AirSenseState::device_standby() ||
            __atomic_load_n(&therapy_start_pending, __ATOMIC_ACQUIRE) ||
            __atomic_load_n(&therapy_wanted, __ATOMIC_ACQUIRE);
 }
@@ -2448,14 +2448,14 @@ static void reset_session_state(bool rollover = false) {
 static void start_session(const ControlEvent &event) {
     __atomic_store_n(&therapy_start_pending, false, __ATOMIC_RELEASE);
     next_start_ms = millis() + 5000;
-    if (status.active || !storage_ready || !__atomic_load_n(&therapy_wanted, __ATOMIC_ACQUIRE) ||
+    if (!SdStorage::local_access_allowed() || status.active || !storage_ready || !__atomic_load_n(&therapy_wanted, __ATOMIC_ACQUIRE) ||
         Arbiter::get_state() != SYS_THERAPY || AirSenseState::rop() != 1) return;
     portENTER_CRITICAL(&status_mux);
     const uint32_t mask_on_ms = therapy_on_capture_ms;
     portEXIT_CRITICAL(&status_mux);
     if (int32_t(event.captured_ms - mask_on_ms) < 0) return;
     if (!SdStorage::acquire()) {
-        status_error("storage busy at recording start");
+        if (SdStorage::local_access_allowed()) status_error("storage busy at recording start");
         return;
     }
     recording_storage_owned = true;
@@ -2917,6 +2917,7 @@ static void process_pending() {
 }
 
 static bool prepare_storage() {
+    if (!SdStorage::local_access_allowed() || (storage_ready && !SdStorage::mounted())) return false;
     if (storage_ready) return true;
     if (next_storage_ms && int32_t(millis() - next_storage_ms) < 0) return false;
     const system_state_t state = Arbiter::get_state();
@@ -2979,6 +2980,22 @@ static void poll_recording_state() {
 
 static void recorder_task(void *) {
     while (true) {
+        if (!SdStorage::local_access_allowed()) {
+            request_stop();
+            if (status.active) {
+                ControlEvent stop;
+                portENTER_CRITICAL(&status_mux);
+                stop = latest_stop;
+                portEXIT_CRITICAL(&status_mux);
+                stop_session(stop);
+            }
+            portENTER_CRITICAL(&status_mux);
+            status.post_processing = false;
+            portEXIT_CRITICAL(&status_mux);
+            // No normal work or automatic remount while the host owns the card.
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
         const bool have_storage = prepare_storage();
         if (have_storage) poll_recording_state();
         ControlEvent control;
@@ -3003,6 +3020,7 @@ static void recorder_task(void *) {
             portEXIT_CRITICAL(&status_mux);
             if (restarted) stop_session(control);
         }
+        if (!SdStorage::local_access_allowed()) continue;
         retry_recording();
 
         drain_raw_frames(pdMS_TO_TICKS(20));

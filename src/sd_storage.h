@@ -13,6 +13,8 @@ namespace SdStorage {
 
 constexpr size_t READ_CHUNK_BYTES = 4096;
 
+enum class Mode : uint8_t { Local, ToUsb, Usb, ToLocal };
+
 struct Status {
     bool supported;
     bool mounted;
@@ -20,6 +22,9 @@ struct Status {
     uint64_t total_bytes;
     uint64_t used_bytes;
     char error[48];
+    Mode mode = Mode::Local;
+    bool usb_supported = false;
+    bool usb_can_stop = false;
 };
 
 // Binary storage records use little-endian fields regardless of alignment.
@@ -59,6 +64,17 @@ bool mounted();
 fs::FS *filesystem();
 void refresh_usage();
 void get_status(Status &out);
+const char *state_name(const Status &status);
+
+// Admission only; the SD worker drains local owners before changing media.
+bool request_usb(bool enabled, const char **error = nullptr);
+bool local_access_allowed();
+
+// USB transport callbacks. Buffer and completion remain owned until done.
+bool usb_transfer(bool write, uint32_t sector, uint8_t *buffer, size_t size,
+                  void (*done)(bool));
+void usb_host_changed(bool connected);
+void usb_ejected();
 
 // Explicit rename/delete steps, including partially completed jobs.
 // Recorder/catalog, private cache and mount/card changes are separate.
