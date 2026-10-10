@@ -64,7 +64,6 @@ uint32_t recorder_waiting = 0;
 TaskHandle_t worker = nullptr;
 TaskHandle_t direct_owner = nullptr;
 Request wake_request = {};
-bool usb_host_connected = false;
 #if AB_USB_MSC_ENABLED
 sdmmc_card_t usb_card = {};
 bool usb_host_started = false;
@@ -526,8 +525,7 @@ bool request_usb(bool enabled, const char **error) {
                 __atomic_store_n(&status.mode, Mode::ToUsb, __ATOMIC_RELEASE);
             }
         } else if (!enabled && status.mode == Mode::Usb) {
-            if (usb_host_connected) rejected = "Eject the USB drive on the computer first";
-            else __atomic_store_n(&status.mode, Mode::ToLocal, __ATOMIC_RELEASE);
+            __atomic_store_n(&status.mode, Mode::ToLocal, __ATOMIC_RELEASE);
         } else if (!enabled && status.mode == Mode::ToLocal && status.error[0]) {
             status.error[0] = 0;
         } else if ((enabled && status.mode != Mode::Usb) ||
@@ -541,17 +539,6 @@ bool request_usb(bool enabled, const char **error) {
 #endif
     if (error) *error = rejected;
     return !rejected;
-}
-
-void usb_host_changed(bool connected) {
-#if AB_USB_MSC_ENABLED
-    portENTER_CRITICAL(&status_mux);
-    usb_host_connected = connected;
-    status.usb_can_stop = !connected;
-    portEXIT_CRITICAL(&status_mux);
-#else
-    (void)connected;
-#endif
 }
 
 void usb_ejected() {

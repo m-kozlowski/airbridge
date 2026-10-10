@@ -65,11 +65,16 @@ bool ready() {
 }
 
 void finish_io(void *) {
-    if (transfer.bus == __atomic_load_n(&bus_generation, __ATOMIC_ACQUIRE) &&
-        transfer.media == __atomic_load_n(&media_generation, __ATOMIC_ACQUIRE)) {
-        if (transfer.success && !transfer.write) memcpy(transfer.buffer, dma_buffer, transfer.size);
-        if (!transfer.success)
+    if (transfer.bus == __atomic_load_n(&bus_generation, __ATOMIC_ACQUIRE)) {
+        // A manual return can withdraw the medium before this completion runs.
+        // Fail the still-current USB command rather than leaving BOT waiting.
+        if (transfer.media != __atomic_load_n(&media_generation, __ATOMIC_ACQUIRE)) {
+            transfer.success = false;
+            tud_msc_set_sense(0, SCSI_SENSE_NOT_READY, 0x3a, 0);
+        } else if (!transfer.success) {
             tud_msc_set_sense(0, SCSI_SENSE_MEDIUM_ERROR, transfer.write ? 0x0c : 0x11, 0);
+        }
+        if (transfer.success && !transfer.write) memcpy(transfer.buffer, dma_buffer, transfer.size);
         // Already in the USB task. Complete before another reset/CBW can run,
         // without blocking this task on a second enqueue to its own full queue.
         __atomic_store_n(&inline_completion_task, xTaskGetCurrentTaskHandle(), __ATOMIC_RELEASE);
@@ -106,12 +111,6 @@ int32_t submit(bool write, uint32_t sector, uint32_t offset, void *buffer, uint3
         return TUD_MSC_RET_ERROR;
     }
     return TUD_MSC_RET_ASYNC;
-}
-
-void usb_event(void *, esp_event_base_t, int32_t event, void *) {
-    if (event == ARDUINO_USB_STARTED_EVENT || event == ARDUINO_USB_STOPPED_EVENT)
-        SdStorage::usb_host_changed(event == ARDUINO_USB_STARTED_EVENT);
-    // Suspend is not eject: a sleeping host still owns its filesystem cache.
 }
 
 }  // namespace
@@ -215,8 +214,6 @@ bool init() {
     // SDMMC DMA must not borrow TinyUSB's buffer or use external RAM.
     dma_buffer = static_cast<uint8_t *>(heap_caps_malloc(BUFFER_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
     if (!dma_buffer) return false;
-    USB.onEvent(usb_event);
-    SdStorage::usb_host_changed(tud_mounted());
 #if defined(AB_BOARD_WROOM_S3)
     pinMode(14, INPUT);
 #endif
@@ -235,7 +232,6 @@ void poll() {
     else {
         tud_disconnect();
         __atomic_add_fetch(&bus_generation, 1, __ATOMIC_ACQ_REL);
-        SdStorage::usb_host_changed(false);
     }
 #endif
 }

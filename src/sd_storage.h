@@ -24,7 +24,6 @@ struct Status {
     char error[48];
     Mode mode = Mode::Local;
     bool usb_supported = false;
-    bool usb_can_stop = false;
 };
 
 // Binary storage records use little-endian fields regardless of alignment.
@@ -66,14 +65,14 @@ void refresh_usage();
 void get_status(Status &out);
 const char *state_name(const Status &status);
 
-// Admission only; the SD worker drains local owners before changing media.
+// Admission only; the SD worker drains admitted I/O before changing media.
+// Disabling USB also works with a connected host; its unwritten cache is lost.
 bool request_usb(bool enabled, const char **error = nullptr);
 bool local_access_allowed();
 
 // USB transport callbacks. Buffer and completion remain owned until done.
 bool usb_transfer(bool write, uint32_t sector, uint8_t *buffer, size_t size,
                   void (*done)(bool));
-void usb_host_changed(bool connected);
 void usb_ejected();
 
 // Explicit rename/delete steps, including partially completed jobs.

@@ -401,7 +401,6 @@ static void appendStatusFields(Output &json, const DeviceStatus::Snapshot &statu
         jsonAddInt(json, "sd_total_mb", sd.card_bytes / (1024 * 1024));
         jsonAddInt(json, "sd_used_mb", sd.used_bytes / (1024 * 1024));
         jsonAddBool(json, "sd_usb_supported", sd.usb_supported);
-        jsonAddBool(json, "sd_usb_can_stop", sd.usb_can_stop);
         jsonAddString(json, "sd_error", sd.error);
 #endif
     }
@@ -2432,7 +2431,7 @@ static uint8_t statusChanges(const DeviceStatus::Snapshot &a,
         a.storage.supported != b.storage.supported ||
         a.storage.card_bytes != b.storage.card_bytes || a.storage.used_bytes != b.storage.used_bytes ||
         a.storage.usb_supported != b.storage.usb_supported ||
-        a.storage.usb_can_stop != b.storage.usb_can_stop || strcmp(a.storage.error, b.storage.error))
+        strcmp(a.storage.error, b.storage.error))
         fields |= STATUS_STORAGE;
     return fields;
 }

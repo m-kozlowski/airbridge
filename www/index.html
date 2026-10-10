@@ -3000,7 +3000,7 @@ function renderStorageStatus(data) {
     document.getElementById('storageEntries').replaceChildren();
     document.getElementById('storagePage').textContent = '';
     document.getElementById('storageMessage').textContent = data.sd_error ||
-      ({usb_starting:'Closing local files...', usb:'Recording paused. Safely eject the USB drive on your computer to resume.',
+      ({usb_starting:'Closing local files...', usb:'Recording paused while the card is shared via USB.',
         usb_stopping:'Remounting SD card...'}[data.sd] || '');
   } else if (data.sd_error || (storageViewState && storageViewState !== 'mounted')) {
     document.getElementById('storageMessage').textContent = data.sd_error || 'Refresh to browse the card.';
@@ -3020,14 +3020,15 @@ function storageControls() {
   document.getElementById('storageDelete').disabled = blocked || !storageSelection.size;
   document.querySelectorAll('#storageEntries button, #storageEntries input').forEach(el => { el.disabled = blocked; });
   document.getElementById('storageUsb').disabled = storageUsbRequest ||
-    !(lastStatus.sd === 'mounted' || (lastStatus.sd === 'usb' && lastStatus.sd_usb_can_stop) ||
+    !(lastStatus.sd === 'mounted' || lastStatus.sd === 'usb' ||
       (lastStatus.sd === 'usb_stopping' && lastStatus.sd_error));
 }
 
 async function storageUsb() {
   if (storageUsbRequest) return;
   const enabled = lastStatus.sd === 'mounted';
-  if (enabled && !confirm('Share the SD card with this computer? Recording and other SD operations will pause until the USB drive is safely ejected.')) return;
+  if (enabled && !confirm('Share the SD card via USB? Recording and other SD operations will pause until the card is returned to AirBridge.')) return;
+  if (!enabled && lastStatus.sd === 'usb' && !confirm('Return the SD card to AirBridge? USB access will stop. Finish copying and safely eject the drive first to avoid losing unsaved changes.')) return;
   storageUsbRequest = true;
   storageControls();
   try {
