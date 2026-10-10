@@ -2994,7 +2994,8 @@ function renderStorageStatus(data) {
     (data.sd_used_mb || 0) + ' MiB used / ' + (data.sd_total_mb || 0) + ' MiB total' : '';
   const usb = document.getElementById('storageUsb');
   usb.hidden = !data.sd_usb_supported;
-  usb.textContent = data.sd === 'mounted' ? 'Share via USB' : 'Return to AirBridge';
+  usb.textContent = data.sd === 'mounted' ? 'Share via USB' :
+    data.sd === 'usb_stopping' && data.sd_error ? 'Retry SD return' : 'Return to AirBridge';
   if (data.sd !== 'mounted') {
     if (storageListAbort) storageListAbort.abort();
     storageSelection.clear();

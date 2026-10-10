@@ -485,6 +485,11 @@ void advance_usb() {
         __atomic_store_n(&status.mode, Mode::ToLocal, __ATOMIC_RELEASE);
     }
     if (__atomic_load_n(&status.mode, __ATOMIC_ACQUIRE) == Mode::ToLocal) {
+        portENTER_CRITICAL(&status_mux);
+        const bool failed = status.error[0] != 0;
+        portEXIT_CRITICAL(&status_mux);
+        // Keep admission closed after failure until request_usb(false) retries.
+        if (failed) return;
         if (__atomic_load_n(&usb_io_pending, __ATOMIC_ACQUIRE)) return;
         UsbStorage::withdraw();
         if (usb_host_started) {
@@ -497,10 +502,13 @@ void advance_usb() {
             usb_host_started = false;
         }
         mount_card();
+        if (!mounted()) {
+            Log::logf(CAT_STORAGE, LOG_ERROR, "SD remount after USB failed\n");
+            return;
+        }
         if (usb_failed && mounted()) mount_error("USB card initialization failed");
         __atomic_store_n(&status.mode, Mode::Local, __ATOMIC_RELEASE);
-        Log::logf(CAT_STORAGE, mounted() ? LOG_INFO : LOG_ERROR,
-                  mounted() ? "SD returned from USB\n" : "SD remount after USB failed\n");
+        Log::logf(CAT_STORAGE, LOG_INFO, "SD returned from USB\n");
     }
 #endif
 }
