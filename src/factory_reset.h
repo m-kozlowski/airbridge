@@ -12,6 +12,7 @@ bool request(const char **error = nullptr, Scope scope = Scope::All);
 
 // Before Config/network/SD initialization. Consumes the marker before any
 // destructive action; any full NVS erase attempt restarts without loading config.
+// A full reset erases NVS even if SD formatting fails or the card is absent.
 // False means pending intent is unreadable or cannot be consumed: boot must halt.
 bool run_pending_on_boot();
 

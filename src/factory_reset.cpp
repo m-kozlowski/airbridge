@@ -129,12 +129,19 @@ bool run_pending_on_boot() {
     }
 
 #if AB_STORAGE_HAS_SDCARD
-    if (!SdStorage::factory_format()) {
-        Log::logf(category, LOG_ERROR,
-                  "%s failed: SD format failed; other NVS settings preserved. "
-                  "SD data may be lost; explicit retry required\n", name);
-        return true;
+    const bool sd_formatted = SdStorage::factory_format();
+    if (!sd_formatted) {
+        if (storage_only) {
+            Log::logf(CAT_STORAGE, LOG_ERROR,
+                      "SD format failed; NVS settings preserved. "
+                      "SD data may be lost; explicit retry required\n");
+            return true;
+        }
+        Log::logf(CAT_CONFIG, LOG_WARN,
+                  "Factory reset: SD format failed; continuing with NVS erase\n");
     }
+#else
+    const bool sd_formatted = true;
 #endif
 
     if (storage_only) {
@@ -152,8 +159,11 @@ bool run_pending_on_boot() {
                   "Factory reset failed: NVS erase: %s; data may be lost. "
                   "Restarting; explicit retry required\n",
                   esp_err_to_name(result));
-    } else {
+    } else if (sd_formatted) {
         Log::logf(CAT_CONFIG, LOG_WARN, "Factory reset complete; restarting\n");
+    } else {
+        Log::logf(CAT_CONFIG, LOG_WARN,
+                  "Factory reset: NVS cleared; SD format not completed; restarting\n");
     }
     // Erase deinitializes NVS even on failure. Never start config owners here.
     Log::poll();
