@@ -2957,6 +2957,7 @@ function renderExports(changed = null) {
 
 let storagePath = '/', storageOffset = 0, storageMore = false, storageLoading = false;
 let storageUsbRequest = false, storageListAbort = null, storageViewState = '';
+let storageReloadPending = false;
 const storageSelection = new Set();
 const STORAGE_STATES = {mounted:'Mounted', unavailable:'Card unavailable', unsupported:'Not supported',
   usb_starting:'Preparing USB', usb:'Shared via USB', usb_stopping:'Returning to AirBridge'};
@@ -3002,11 +3003,19 @@ function renderStorageStatus(data) {
     document.getElementById('storageMessage').textContent = data.sd_error ||
       ({usb_starting:'Closing local files...', usb:'Recording paused while the card is shared via USB.',
         usb_stopping:'Remounting SD card...'}[data.sd] || '');
-  } else if (data.sd_error || (storageViewState && storageViewState !== 'mounted')) {
-    document.getElementById('storageMessage').textContent = data.sd_error || 'Refresh to browse the card.';
+  } else {
+    if (storageViewState && storageViewState !== 'mounted') storageReloadPending = true;
+    if (data.sd_error || storageReloadPending)
+      document.getElementById('storageMessage').textContent = data.sd_error || '';
   }
   storageViewState = data.sd;
   storageControls();
+  reloadStorageIfNeeded();
+}
+
+function reloadStorageIfNeeded() {
+  if (storageReloadPending && document.getElementById('p-storage').classList.contains('active'))
+    loadStorage(storagePath, 0);
 }
 
 function storageControls() {
@@ -3041,6 +3050,7 @@ async function storageUsb() {
   } finally {
     storageUsbRequest = false;
     storageControls();
+    reloadStorageIfNeeded();
   }
 }
 
@@ -3048,6 +3058,7 @@ function storageChild(name) { return (storagePath === '/' ? '' : storagePath) + 
 
 async function loadStorage(path = storagePath, offset = storageOffset) {
   if (storageLoading || storageUsbRequest || (lastStatus.sd && lastStatus.sd !== 'mounted')) return;
+  storageReloadPending = false;
   const controller = new AbortController();
   storageListAbort = controller;
   storageLoading = true;
@@ -3099,7 +3110,12 @@ async function loadStorage(path = storagePath, offset = storageOffset) {
     message.textContent = data.entries.length ? '' : 'This directory is empty.';
   } catch (error) {
     if (!controller.signal.aborted) message.textContent = error.message;
-  } finally { storageListAbort = null; storageLoading = false; storageControls(); }
+  } finally {
+    storageListAbort = null;
+    storageLoading = false;
+    storageControls();
+    reloadStorageIfNeeded();
+  }
 }
 
 function storageUp() {
