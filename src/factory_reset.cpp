@@ -17,7 +17,6 @@ namespace {
 
 constexpr const char *MARKER_NAMESPACE = "factory_reset";
 constexpr const char *MARKER_KEY = "pending";
-constexpr uint8_t MARKER_VALUE = 1;
 
 const char *blocked() {
     if (!AirSenseState::local_background_allowed()) return "device_not_idle";
@@ -25,10 +24,13 @@ const char *blocked() {
     return nullptr;
 }
 
-bool prepare() {
+bool prepare_scope(Scope scope) {
+    const bool storage_only = scope == Scope::StorageOnly;
+    const char *name = storage_only ? "SD format" : "Factory reset";
+    const log_cat_t category = storage_only ? CAT_STORAGE : CAT_CONFIG;
     const char *error = blocked();
     if (error) {
-        Log::logf(CAT_CONFIG, LOG_WARN, "Factory reset cancelled: %s\n", error);
+        Log::logf(category, LOG_WARN, "%s cancelled: %s\n", name, error);
         return false;
     }
 
@@ -36,7 +38,7 @@ bool prepare() {
     esp_err_t cleanup = ESP_OK;
     esp_err_t result = nvs_open(MARKER_NAMESPACE, NVS_READWRITE, &handle);
     if (result == ESP_OK) {
-        result = nvs_set_u8(handle, MARKER_KEY, MARKER_VALUE);
+        result = nvs_set_u8(handle, MARKER_KEY, static_cast<uint8_t>(scope));
         if (result == ESP_OK) result = nvs_commit(handle);
         if (result != ESP_OK) {
             // NVS writes may persist before commit; disarm a failed request.
@@ -46,27 +48,37 @@ bool prepare() {
         nvs_close(handle);
     }
     if (result != ESP_OK) {
-        Log::logf(CAT_CONFIG, LOG_ERROR, "Factory reset marker save failed: %s\n",
-                  esp_err_to_name(result));
+        Log::logf(category, LOG_ERROR, "%s marker save failed: %s\n",
+                  name, esp_err_to_name(result));
         if (cleanup != ESP_OK && cleanup != ESP_ERR_NVS_NOT_FOUND) {
-            Log::logf(CAT_CONFIG, LOG_ERROR,
-                      "Factory reset fatal: marker cleanup failed: %s; reset may remain armed. "
-                      "Restarting before normal work resumes\n", esp_err_to_name(cleanup));
+            Log::logf(category, LOG_ERROR,
+                      "%s fatal: marker cleanup failed: %s; reset may remain armed. "
+                      "Restarting before normal work resumes\n", name, esp_err_to_name(cleanup));
             Log::poll();
             ESP.restart();
             for (;;) delay(1000);
         }
         return false;
     }
-    Log::logf(CAT_CONFIG, LOG_WARN, "Factory reset armed for next boot\n");
+    Log::logf(category, LOG_WARN, "%s armed for next boot\n", name);
     return true;
 }
 
+bool prepare() { return prepare_scope(Scope::All); }
+bool prepare_storage_format() { return prepare_scope(Scope::StorageOnly); }
+
 }  // namespace
 
-bool request(const char **error) {
+bool request(const char **error, Scope scope) {
+#if !AB_STORAGE_HAS_SDCARD
+    if (scope == Scope::StorageOnly) {
+        if (error) *error = "storage_unsupported";
+        return false;
+    }
+#endif
     const char *rejected = blocked();
-    if (!rejected && !OtaManager::request_reboot(prepare))
+    if (!rejected && !OtaManager::request_reboot(
+            scope == Scope::StorageOnly ? prepare_storage_format : prepare))
         rejected = "prepared_reboot_unavailable";
     if (error) *error = rejected;
     return !rejected;
@@ -90,6 +102,10 @@ bool run_pending_on_boot() {
         return false;
     }
 
+    const bool storage_only = marker == static_cast<uint8_t>(Scope::StorageOnly);
+    const bool recognized = storage_only || marker == static_cast<uint8_t>(Scope::All);
+    const char *name = storage_only ? "SD format" : "Factory reset";
+    const log_cat_t category = storage_only ? CAT_STORAGE : CAT_CONFIG;
     result = nvs_open(MARKER_NAMESPACE, NVS_READWRITE, &handle);
     if (result == ESP_OK) {
         result = nvs_erase_key(handle, MARKER_KEY);
@@ -97,29 +113,38 @@ bool run_pending_on_boot() {
         nvs_close(handle);
     }
     if (result != ESP_OK) {
-        Log::logf(CAT_CONFIG, LOG_ERROR, "Factory reset marker consume failed: %s\n",
-                  esp_err_to_name(result));
-        if (marker == MARKER_VALUE) {
-            Log::logf(CAT_CONFIG, LOG_ERROR,
-                      "Factory reset fatal: armed intent could not be consumed; "
-                      "boot halted before config/storage owners\n");
+        Log::logf(category, LOG_ERROR, "%s marker consume failed: %s\n",
+                  name, esp_err_to_name(result));
+        if (recognized) {
+            Log::logf(category, LOG_ERROR,
+                      "%s fatal: armed intent could not be consumed; "
+                      "boot halted before config/storage owners\n", name);
             return false;
         }
         return true;
     }
-    if (marker != MARKER_VALUE) {
+    if (!recognized) {
         Log::logf(CAT_CONFIG, LOG_WARN, "Unknown factory reset marker ignored\n");
         return true;
     }
 
 #if AB_STORAGE_HAS_SDCARD
     if (!SdStorage::factory_format()) {
-        Log::logf(CAT_CONFIG, LOG_ERROR,
-                  "Factory reset failed: SD format failed; other NVS settings preserved. "
-                  "SD data may be lost; explicit retry required\n");
+        Log::logf(category, LOG_ERROR,
+                  "%s failed: SD format failed; other NVS settings preserved. "
+                  "SD data may be lost; explicit retry required\n", name);
         return true;
     }
 #endif
+
+    if (storage_only) {
+#if AB_STORAGE_HAS_SDCARD
+        Log::logf(CAT_STORAGE, LOG_WARN, "SD format complete; configuration preserved\n");
+#else
+        Log::logf(CAT_STORAGE, LOG_WARN, "SD format unavailable; configuration preserved\n");
+#endif
+        return true;
+    }
 
     result = nvs_flash_erase();
     if (result != ESP_OK) {

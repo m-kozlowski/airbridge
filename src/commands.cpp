@@ -146,6 +146,21 @@ void dispatch_command(const char *line, String &response) {
                 : "ERR: " + String(error) + "\n";
             return;
         }
+        if (action == "FORMAT") {
+            String confirmation = path;
+            confirmation.toUpperCase();
+            if (confirmation != "CONFIRM" || position != static_cast<int>(cmd.length())) {
+                response = "ERR: usage: $STORAGE FORMAT CONFIRM\n"
+                           "Replaces the SD partition table and formats FAT32, erasing ALL SD data. "
+                           "Restarts; AirBridge configuration is preserved.\n";
+                return;
+            }
+            const char *error = nullptr;
+            response = FactoryReset::request(&error, FactoryReset::Scope::StorageOnly)
+                ? "OK: SD format queued; restarting; configuration preserved\n"
+                : "ERR: " + String(error) + "\n";
+            return;
+        }
 #if AB_STORAGE_HAS_SDCARD
         const String name = parse_quoted_token(cmd, &position);
         const String extra = parse_quoted_token(cmd, &position);
@@ -155,7 +170,7 @@ void dispatch_command(const char *line, String &response) {
             path.length() >= sizeof(request.path) ||
             (rename ? name.isEmpty() || name.length() >= 256 : !name.isEmpty()) ||
             !extra.isEmpty()) {
-            response = "ERR: usage: $STORAGE RENAME /path new_name | RM /path | STATUS\n";
+            response = "ERR: usage: $STORAGE RENAME /path new_name | RM /path | STATUS | FORMAT CONFIRM\n";
             return;
         }
         request.kind = rename ? StorageBrowser::Kind::Rename : StorageBrowser::Kind::Delete;
@@ -725,6 +740,7 @@ void dispatch_command(const char *line, String &response) {
                    "  STORAGE RM path     Delete a file or folder recursively\n"
 #endif
                    "  STORAGE STATUS      SD state, space and last file operation\n"
+                   "  STORAGE FORMAT CONFIRM Erase all SD data, preserve config, restart\n"
                    "  STORAGE USB ON|OFF  Share SD over USB / return after disconnect\n"
                    "  FLASH [block] [BLX] [FORCE]  Flash uploaded firmware\n"
                    "  FLASH STATUS|CANCEL Monitor/cancel flash\n"
