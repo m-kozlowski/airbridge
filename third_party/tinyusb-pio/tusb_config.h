@@ -2,8 +2,8 @@
 
 #include "sdkconfig.h"
 
-#if !CONFIG_IDF_TARGET_ESP32S3 || !AB_USB_MSC_ENABLED || ARDUINO_USB_MODE != 0
-#error "The local TinyUSB configuration requires esp32-s3 USB SD device mode"
+#if !CONFIG_IDF_TARGET_ESP32S3 || !AB_USB_MSC_ENABLED || ARDUINO_USB_MODE != 1
+#error "The local TinyUSB configuration requires esp32-s3 SD handoff with Serial/JTAG"
 #endif
 
 #define CFG_TUSB_MCU OPT_MCU_ESP32S3
@@ -19,16 +19,12 @@
 #define BOARD_TUD_RHPORT 0
 #define BOARD_TUD_MAX_SPEED CFG_TUD_MAX_SPEED
 
-#define CFG_TUD_CDC 1
+#define CFG_TUD_CDC 0
 #define CFG_TUD_MSC 1
-#define CFG_TUD_CDC_RX_BUFSIZE CONFIG_TINYUSB_CDC_RX_BUFSIZE
-#define CFG_TUD_CDC_TX_BUFSIZE CONFIG_TINYUSB_CDC_TX_BUFSIZE
 #define CFG_TUD_MSC_BUFSIZE CONFIG_TINYUSB_MSC_BUFSIZE
 
 #define CFG_TUD_ENDPOINT0_SIZE 64
-// Arduino's glue uses these spellings, independently of TinyUSB's EP0 setting.
-#define CFG_TUD_ENDOINT0_SIZE CFG_TUD_ENDPOINT0_SIZE
-#define CFG_TUD_ENDOINT_SIZE 64
-#define CFG_TUD_MAINTASK_SIZE 4096
+// Return to our task after each event, including the shutdown notification.
+#define CFG_TUD_TASK_EVENTS_PER_RUN 1
 
 // All other device classes use TinyUSB's disabled defaults.

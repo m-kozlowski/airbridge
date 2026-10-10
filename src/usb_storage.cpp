@@ -1,11 +1,11 @@
 #include "usb_storage.h"
+#include "usb_storage_device.h"
 #include "board.h"
 
 #if AB_USB_MSC_ENABLED
 #include <Arduino.h>
-#include <USB.h>
 #include <esp_heap_caps.h>
-#include <esp32-hal-tinyusb.h>
+#include <tusb.h>
 #include <device/usbd_pvt.h>
 #include <device/dcd.h>
 #include "sd_storage.h"
@@ -17,9 +17,8 @@ static_assert(BUFFER_BYTES >= 512 && BUFFER_BYTES % 512 == 0, "MSC buffer must h
 uint8_t *dma_buffer = nullptr;
 uint32_t sector_count = 0;
 bool media_present = false;
-bool registered = false;
-bool initialized = false;
 bool prevented = false;
+bool eject_pending = false;
 uint32_t bus_generation = 0;
 uint32_t media_generation = 0;
 TaskHandle_t inline_completion_task = nullptr;
@@ -33,24 +32,6 @@ struct {
     uint32_t bus = 0, media = 0, size = 0;
     void *buffer = nullptr;
 } transfer;
-
-uint16_t descriptor(uint8_t *out, uint8_t *interface) {
-    const uint8_t endpoint = tinyusb_get_free_duplex_endpoint();
-    if (!endpoint) return 0;
-    const uint8_t name = tinyusb_add_string_descriptor("AirBridge SD");
-    const uint8_t bytes[] = {
-        TUD_MSC_DESCRIPTOR(*interface, name, endpoint, uint8_t(0x80 | endpoint), CFG_TUD_ENDOINT_SIZE)
-    };
-    ++*interface;
-    memcpy(out, bytes, sizeof(bytes));
-    return sizeof(bytes);
-}
-
-struct Register {
-    Register() {
-        registered = tinyusb_enable_interface(USB_INTERFACE_MSC, TUD_MSC_DESC_LEN, descriptor) == ESP_OK;
-    }
-} registration;
 
 bool ready() {
     static uint32_t seen_media = 0;
@@ -192,8 +173,16 @@ bool tud_msc_start_stop_cb(uint8_t, uint8_t, bool start, bool eject) {
         return false;
     }
     UsbStorage::withdraw();
-    SdStorage::usb_ejected();
+    eject_pending = true;
     return true;
+}
+
+void tud_msc_scsi_complete_cb(uint8_t, const uint8_t command[16]) {
+    // The host must receive START STOP's status before we disconnect MSC.
+    if (eject_pending && command[0] == SCSI_CMD_START_STOP_UNIT) {
+        eject_pending = false;
+        SdStorage::usb_ejected();
+    }
 }
 
 int32_t tud_msc_scsi_cb(uint8_t, const uint8_t command[16], void *, uint16_t) {
@@ -208,54 +197,49 @@ int32_t tud_msc_scsi_cb(uint8_t, const uint8_t command[16], void *, uint16_t) {
 
 namespace UsbStorage {
 
-bool init() {
-    if (initialized) return true;
-    if (!registered) return false;
+esp_err_t expose(uint32_t sectors) {
+    if (dma_buffer) return ESP_ERR_INVALID_STATE;
     // SDMMC DMA must not borrow TinyUSB's buffer or use external RAM.
     dma_buffer = static_cast<uint8_t *>(heap_caps_malloc(BUFFER_BYTES, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
-    if (!dma_buffer) return false;
-#if defined(AB_BOARD_WROOM_S3)
-    pinMode(14, INPUT);
-#endif
-    initialized = true;
-    return true;
-}
-
-void poll() {
-#if defined(AB_BOARD_WROOM_S3)
-    if (!initialized) return;
-    static int previous = -1;
-    const int present = digitalRead(14);
-    if (present == previous) return;
-    previous = present;
-    if (present) tud_connect();
-    else {
-        tud_disconnect();
-        __atomic_add_fetch(&bus_generation, 1, __ATOMIC_ACQ_REL);
-    }
-#endif
-}
-
-void expose(uint32_t sectors) {
-    USBSerial.enableReboot(false);
+    if (!dma_buffer) return ESP_ERR_NO_MEM;
+    transfer = {};
+    prevented = false;
+    eject_pending = false;
     __atomic_store_n(&sector_count, sectors, __ATOMIC_RELEASE);
     __atomic_add_fetch(&media_generation, 1, __ATOMIC_ACQ_REL);
     __atomic_store_n(&media_present, true, __ATOMIC_RELEASE);
+    const esp_err_t result = UsbStorageDevice::start();
+    if (result != ESP_OK) withdraw();
+    return result;
+}
+
+esp_err_t stop() {
+    withdraw();
+    // The worker queued the final completion before this shutdown request.
+    const esp_err_t result = UsbStorageDevice::stop();
+    if (result != ESP_OK) return result;
+    heap_caps_free(dma_buffer);
+    dma_buffer = nullptr;
+    return ESP_OK;
 }
 
 void withdraw() {
     __atomic_store_n(&media_present, false, __ATOMIC_RELEASE);
     __atomic_add_fetch(&media_generation, 1, __ATOMIC_ACQ_REL);
-    USBSerial.enableReboot(true);
 }
 
 }  // namespace UsbStorage
 
 #else
 namespace UsbStorage {
-bool init() { return false; }
-void poll() {}
-void expose(uint32_t) {}
+esp_err_t expose(uint32_t) { return ESP_ERR_NOT_SUPPORTED; }
+esp_err_t stop() { return ESP_OK; }
 void withdraw() {}
 }  // namespace UsbStorage
 #endif
+
+namespace UsbStorage {
+void begin() { UsbStorageDevice::begin(); }
+void poll() { UsbStorageDevice::poll(); }
+bool serial_available() { return UsbStorageDevice::serial_available(); }
+}  // namespace UsbStorage

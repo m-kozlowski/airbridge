@@ -46,6 +46,10 @@ static char serial_line[SERIAL_LINE_MAX];
 static int serial_pos = 0;
 
 static void serial_poll() {
+    if (!UsbStorage::serial_available()) {
+        serial_pos = 0;
+        return;
+    }
     while (Serial.available()) {
         char c = Serial.read();
 
@@ -90,7 +94,9 @@ void setup() {
     digitalWrite(AB_LCD_BACKLIGHT_GPIO, LOW);
 #endif
 
+    UsbStorage::begin();
     Serial.begin(115200);
+    UsbStorage::poll();
 #if defined(AB_BOARD_WROOM_S3) && !AB_USB_MSC_ENABLED
     pinMode(14, INPUT);
     attachInterrupt(digitalPinToInterrupt(14), usb_vbus_changed, CHANGE);

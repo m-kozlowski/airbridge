@@ -390,9 +390,8 @@ void init() {
         return;
     }
 #if AB_USB_MSC_ENABLED
-    const bool usb_ready = UsbStorage::init();
     portENTER_CRITICAL(&status_mux);
-    status.usb_supported = usb_ready;
+    status.usb_supported = true;
     portEXIT_CRITICAL(&status_mux);
 #endif
     Request request = {};
@@ -473,16 +472,20 @@ void advance_usb() {
         usb_host_started = result == ESP_OK;
         if (result == ESP_OK) result = sdmmc_host_init_slot(host.slot, &slot);
         if (result == ESP_OK) result = sdmmc_card_init(&host, &usb_card);
-        if (result == ESP_OK && usb_card.csd.sector_size != 512) result = ESP_ERR_NOT_SUPPORTED;
+        if (result == ESP_OK && (usb_card.csd.sector_size != 512 || !usb_card.csd.capacity))
+            result = ESP_ERR_NOT_SUPPORTED;
         if (result == ESP_OK) {
             __atomic_store_n(&status.mode, Mode::Usb, __ATOMIC_RELEASE);
-            UsbStorage::expose(usb_card.csd.capacity);
-            Log::logf(CAT_STORAGE, LOG_INFO, "SD shared over USB; local recording paused\n");
-            return;
+            result = UsbStorage::expose(usb_card.csd.capacity);
         }
-        Log::logf(CAT_STORAGE, LOG_ERROR, "USB card initialization failed: %s\n", esp_err_to_name(result));
-        usb_failed = true;
-        __atomic_store_n(&status.mode, Mode::ToLocal, __ATOMIC_RELEASE);
+        if (result == ESP_OK) {
+            Log::logf(CAT_STORAGE, LOG_INFO, "SD shared over USB; local recording paused\n");
+            if (__atomic_load_n(&status.mode, __ATOMIC_ACQUIRE) == Mode::Usb) return;
+        } else {
+            Log::logf(CAT_STORAGE, LOG_ERROR, "USB handoff failed: %s\n", esp_err_to_name(result));
+            usb_failed = true;
+            __atomic_store_n(&status.mode, Mode::ToLocal, __ATOMIC_RELEASE);
+        }
     }
     if (__atomic_load_n(&status.mode, __ATOMIC_ACQUIRE) == Mode::ToLocal) {
         portENTER_CRITICAL(&status_mux);
@@ -491,7 +494,12 @@ void advance_usb() {
         // Keep admission closed after failure until request_usb(false) retries.
         if (failed) return;
         if (__atomic_load_n(&usb_io_pending, __ATOMIC_ACQUIRE)) return;
-        UsbStorage::withdraw();
+        const esp_err_t stopped = UsbStorage::stop();
+        if (stopped != ESP_OK) {
+            mount_error("USB shutdown failed");
+            Log::logf(CAT_STORAGE, LOG_ERROR, "USB shutdown failed: %s\n", esp_err_to_name(stopped));
+            return;
+        }
         if (usb_host_started) {
             const esp_err_t result = sdmmc_host_deinit();
             if (result != ESP_OK) {
@@ -506,7 +514,7 @@ void advance_usb() {
             Log::logf(CAT_STORAGE, LOG_ERROR, "SD remount after USB failed\n");
             return;
         }
-        if (usb_failed && mounted()) mount_error("USB card initialization failed");
+        if (usb_failed) mount_error("USB handoff failed");
         __atomic_store_n(&status.mode, Mode::Local, __ATOMIC_RELEASE);
         Log::logf(CAT_STORAGE, LOG_INFO, "SD returned from USB\n");
     }

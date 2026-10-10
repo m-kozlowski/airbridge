@@ -8,11 +8,24 @@ SOURCES = (
     "common/tusb_fifo.c",
     "device/usbd.c",
     "device/usbd_control.c",
-    "class/cdc/cdc_device.c",
     "class/msc/msc_device.c",
     "portable/synopsys/dwc2/dcd_dwc2.c",
     "portable/synopsys/dwc2/dwc2_common.c",
 )
+
+
+def select_core_source(env, node):
+    definitions = dict(
+        item for item in env["CPPDEFINES"] if isinstance(item, (tuple, list))
+    )
+    if str(definitions.get("AB_USB_MSC_ENABLED")) == "1":
+        if Path(node.srcnode().get_abspath()).name in (
+            "USB.cpp", "USBCDC.cpp", "USBMSC.cpp", "FirmwareMSC.cpp",
+            "esp32-hal-tinyusb.c",
+        ):
+            return None
+
+    return node
 
 
 def configure(env):
@@ -47,7 +60,7 @@ def configure(env):
         lib for lib in libraries if lib not in ("arduino_tinyusb", "-larduino_tinyusb")
     ])
     env.Prepend(LIBS=archive)
-    print("TinyUSB: local CDC + MSC only; other SDK archives remain prebuilt")
+    print("TinyUSB: on-demand MSC only; Serial/JTAG remains the default")
 
 
 if "Import" in globals():

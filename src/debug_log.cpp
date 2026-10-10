@@ -2,6 +2,7 @@
 #include "memory_manager.h"
 #include "build_info.h"
 #include "wifi_setup.h"
+#include "usb_storage.h"
 #include <esp_system.h>
 #include <WiFi.h>
 #include <freertos/FreeRTOS.h>
@@ -148,7 +149,7 @@ static void poll_local() {
     static char serial_pending[160];
     static size_t serial_pos = 0, serial_len = 0;
     for (size_t i = 0; i < SYSLOG_SEND_BUDGET; i++) {
-        const bool serial_ready = (bool)Serial;
+        const bool serial_ready = UsbStorage::serial_available() && (bool)Serial;
         // An absent USB receiver is not a stalled sink; discard its pending tail.
         if (!serial_ready) serial_pos = serial_len = 0;
         int room = serial_ready ? Serial.availableForWrite() : 0;
