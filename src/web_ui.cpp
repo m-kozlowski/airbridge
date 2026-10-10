@@ -1337,7 +1337,15 @@ static bool claimUpload(AsyncWebServerRequest *request) {
         if (uploadOwner == request) uploadOk = false;
         return false;
     }
-    if (!OtaManager::begin_manual_upload()) return false;
+    const char *error = nullptr;
+    if (!OtaManager::begin_manual_upload(&error)) {
+        String json = "{\"ok\":false";
+        jsonAddString(json, "error", error);
+        json += '}';
+        request->send(409, "application/json", json);
+        Log::logf(CAT_OTA, LOG_WARN, "HTTP upload rejected: %s\n", error);
+        return false;
+    }
     uploadOwner = request;
     uploadNextIndex = 0;
     uploadErased = 0;
@@ -1884,10 +1892,7 @@ static void abortEspOtaUpload(AsyncWebServerRequest *request) {
 static void handleEspOtaChunk(AsyncWebServerRequest *request, const String& filename,
                                size_t index, uint8_t *data, size_t len, bool final) {
     if (index == 0) {
-        if (!claimUpload(request)) {
-            Log::logf(CAT_OTA, LOG_WARN, "ESP OTA rejected: OTA busy\n");
-            return;
-        }
+        if (!claimUpload(request)) return;
         Log::logf(CAT_OTA, LOG_DEBUG, "ESP OTA start: %s\n", filename.c_str());
         uploadKind = UPLOAD_ESP;
         resmed_part = nullptr;
@@ -1956,6 +1961,7 @@ static String buildOtaStatus(const OtaManager::Status &status, bool full) {
              status.state != OtaManager::State::Disabled)
         jsonAddString(json, "blocked", status.blocked);
     if (full) {
+        jsonAddString(json, "upload_blocked", status.upload_blocked ? status.upload_blocked : "");
         jsonAddString(json, "version", airbridge_version());
         jsonAddUInt32(json, "uptime", millis() / 1000);
         jsonAddString(json, "release_target", AB_OTA_RELEASE_TARGET);

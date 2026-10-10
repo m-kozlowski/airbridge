@@ -385,10 +385,11 @@ def main(argv=None):
         for target in targets:
             request_json(target, 'GET', '/api/status', auth, args.timeout)
             environment = None
-            metadata = None
-            if args.compress == 'auto' or (args.file is None and not args.env):
-                metadata = request_json(target, 'GET', '/api/ota', auth, args.timeout,
-                                        allow_missing=True)
+            metadata = request_json(target, 'GET', '/api/ota', auth, args.timeout,
+                                    allow_missing=True)
+            blocked = (metadata or {}).get('upload_blocked')
+            if blocked:
+                raise FlashError(f'{target_label(target)}: upload blocked: {blocked}')
             supported = (metadata or {}).get('upload_encodings', [])
             use_zlib = args.compress == 'zlib' or (
                 args.compress == 'auto' and isinstance(supported, list) and 'zlib' in supported)

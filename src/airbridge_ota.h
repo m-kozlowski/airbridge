@@ -12,6 +12,7 @@ namespace OtaManager {
         uint32_t revision;
         State state;
         const char *blocked;
+        const char *upload_blocked;
         uint8_t progress;
         size_t bytes;
         size_t total_size;
@@ -34,7 +35,7 @@ namespace OtaManager {
     bool get_status(Status &status);
     const char *state_name(State state);
 
-    bool begin_manual_upload();
+    bool begin_manual_upload(const char **error = nullptr);
     void end_manual_upload(bool success, const char *error = nullptr);
 
     // Image I/O requires the existing manual-upload or release-install lease.
