@@ -22,6 +22,7 @@ bool initialized = false;
 bool prevented = false;
 uint32_t bus_generation = 0;
 uint32_t media_generation = 0;
+TaskHandle_t inline_completion_task = nullptr;
 
 // One BOT command is in flight. Only the USB task accesses the TinyUSB buffer;
 // the SD worker uses a separate DMA buffer, also across reset/disconnect.
@@ -69,7 +70,11 @@ void finish_io(void *) {
         if (transfer.success && !transfer.write) memcpy(transfer.buffer, dma_buffer, transfer.size);
         if (!transfer.success)
             tud_msc_set_sense(0, SCSI_SENSE_MEDIUM_ERROR, transfer.write ? 0x0c : 0x11, 0);
+        // Already in the USB task. Complete before another reset/CBW can run,
+        // without blocking this task on a second enqueue to its own full queue.
+        __atomic_store_n(&inline_completion_task, xTaskGetCurrentTaskHandle(), __ATOMIC_RELEASE);
         tud_msc_async_io_done(transfer.success ? int32_t(transfer.size) : TUD_MSC_RET_ERROR, false);
+        __atomic_store_n(&inline_completion_task, nullptr, __ATOMIC_RELEASE);
     }
     transfer.buffer = nullptr;
     transfer.busy = false;
@@ -112,6 +117,17 @@ void usb_event(void *, esp_event_base_t, int32_t event, void *) {
 }  // namespace
 
 extern "C" {
+
+void __real_usbd_defer_func(osal_task_func_t function, void *argument, bool in_isr);
+
+void __wrap_usbd_defer_func(osal_task_func_t function, void *argument, bool in_isr) {
+    if (!in_isr && __atomic_load_n(&inline_completion_task, __ATOMIC_ACQUIRE) == xTaskGetCurrentTaskHandle()) {
+        __atomic_store_n(&inline_completion_task, nullptr, __ATOMIC_RELEASE);
+        function(argument);
+        return;
+    }
+    __real_usbd_defer_func(function, argument, in_isr);
+}
 
 void __real_mscd_reset(uint8_t rhport);
 bool __real_mscd_control_xfer_cb(uint8_t rhport, uint8_t stage,
