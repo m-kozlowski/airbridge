@@ -4,12 +4,51 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AirBridge</title>
+<script>
+try {
+  document.documentElement.dataset.theme=localStorage.getItem('airbridge.theme')==='light'?'light':'dark';
+} catch(e) {}
+function applyTheme(theme) {
+  const light = theme === 'light';
+  document.documentElement.dataset.theme = light ? 'light' : 'dark';
+  const button = document.getElementById('themeToggle');
+  if (button) {
+    const label = 'Switch to ' + (light ? 'dark' : 'light') + ' theme';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    button.setAttribute('aria-pressed', String(light));
+    const language = document.documentElement.dataset.language || 'en';
+    if (typeof translateAttribute === 'function') {
+      translateAttribute(button, 'aria-label', language, true);
+      translateAttribute(button, 'title', language, true);
+    }
+  }
+}
+function toggleTheme() {
+  const theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  applyTheme(theme);
+  try { localStorage.setItem('airbridge.theme', theme); } catch(e) {}
+  updateCharts(true);
+  if (reportPlot.view) scheduleReportDraw();
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
+  color-scheme:dark;
   --bg:#0d0d1a;--surface:#141428;--card:#1a1a32;--border:#252545;--border-light:#2a2a4a;
   --text:#e0e0e0;--text-dim:#888;--accent:#00d4aa;--accent-dim:#00d4aa33;
-  --red:#e94560;--green:#4ade80;--blue:#818cf8;--cyan:#22d3ee;--orange:#fb923c
+  --red:#e94560;--green:#4ade80;--blue:#818cf8;--cyan:#22d3ee;--orange:#fb923c;
+  --hover:#ffffff0a;--row-border:#25254533;--accent-contrast:#00110e;
+  --chart-surface:#08081a;--chart-grid:#1a1a3a;--chart-zero:#50546b;--chart-label:#9aa0b5
+}
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3f6fa;--surface:#fff;--card:#fff;--border:#dce3ec;--border-light:#cbd5e1;
+  --text:#1e293b;--text-dim:#64748b;--accent:#007a59;--accent-dim:#007a591a;
+  --red:#dc3545;--green:#168348;--blue:#5b62c9;--cyan:#087f9c;--orange:#b85b08;
+  --hover:#0f172a0a;--row-border:#dce3ec;--accent-contrast:#fff;
+  --chart-surface:#fff;--chart-grid:#d8e0ea;--chart-zero:#65758b;--chart-label:#46566b
 }
 [hidden]{display:none!important}
 .sync-value{overflow-wrap:anywhere;min-width:0;text-align:right}
@@ -27,7 +66,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sidebar .brand small{font-size:11px;color:var(--text-dim);display:block;margin-top:2px}
 .sidebar nav{flex:1;padding:8px 0}
 .nav-item{display:flex;align-items:center;gap:12px;padding:10px 20px;color:var(--text-dim);text-decoration:none;font-size:16px;cursor:pointer;border-left:3px solid transparent;transition:all 0.15s}
-.nav-item:hover{color:var(--text);background:#ffffff08}
+.nav-item:hover{color:var(--text);background:var(--hover)}
 .nav-item.active{color:var(--accent);background:var(--accent-dim);border-left-color:var(--accent)}
 .nav-item .icon{font-size:16px;width:20px;text-align:center}
 
@@ -36,12 +75,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
 .topbar .left{display:flex;align-items:center;gap:12px}
 .topbar .page-title{font-size:16px;font-weight:600}
-.live-badge{background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:1px}
+.live-badge{background:var(--accent);color:var(--accent-contrast);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:1px}
 .topbar .right{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px 16px;min-width:0;font-size:12px;color:var(--text-dim)}
 .topbar .wifi-status{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%}
 #topSsid{max-width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wifi-bars{display:inline-flex;align-items:flex-end;flex-shrink:0;gap:2px;height:12px;vertical-align:middle}
-.wifi-bars span{width:3px;border-radius:1px;background:#475569}
+.wifi-bars span{width:3px;border-radius:1px;background:var(--border-light)}
 .wifi-bars span:nth-child(1){height:4px}
 .wifi-bars span:nth-child(2){height:6px}
 .wifi-bars span:nth-child(3){height:9px}
@@ -74,9 +113,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .badge-idle{background:#1e1e3a;color:var(--text-dim);border:1px solid var(--border)}
 .badge-error{background:#450a0a;color:var(--red);border:1px solid #7f1d1d}
 .badge-feed{background:#064e3b;color:var(--green);border:1px solid #065f46}
+:root[data-theme="light"] .badge-therapy,:root[data-theme="light"] .badge-feed{background:#dcfce7;color:#166534;border-color:#86efac}
+:root[data-theme="light"] .badge-streaming{background:#e0f2fe;color:#075985;border-color:#7dd3fc}
+:root[data-theme="light"] .badge-idle{background:#eef2f7;color:#526174;border-color:#cbd5e1}
+:root[data-theme="light"] .badge-error{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
 
 /* Rows, fields */
-.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #25254533}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--row-border)}
 .row:last-child{border-bottom:none}
 .setting-group{margin-top:14px}
 .setting-group .setting-group{margin-left:12px}
@@ -155,7 +198,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .report-plots canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .report-chart-surface{position:relative}
 .report-plot-overlay{position:absolute;inset:18px 8px 22px 44px;overflow:hidden;pointer-events:none}
-.report-plot-cursor{position:absolute;top:0;bottom:0;border-left:1px dashed #aaa;transform:translateX(-.5px)}
+.report-plot-cursor{position:absolute;top:0;bottom:0;border-left:1px dashed var(--chart-zero);transform:translateX(-.5px)}
 .report-plot-selection{position:absolute;top:0;bottom:0;box-sizing:border-box;background:#22d3ee33;border:1px solid #22d3ee}
 .report-plots .chart-card{margin:8px 0;padding:10px 16px}
 .report-chart-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px}
@@ -178,9 +221,9 @@ input[type=text],input[type=password]{background:var(--bg);color:var(--text);bor
 .btn{padding:8px 20px;border:1px solid var(--border-light);border-radius:8px;background:transparent;color:var(--text);font-size:12px;font-weight:600;cursor:pointer;letter-spacing:0.3px;transition:all 0.15s}
 a.btn{display:inline-block;text-decoration:none}
 a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-.btn:hover{background:#ffffff0a;border-color:var(--text-dim)}
+.btn:hover{background:var(--hover);border-color:var(--text-dim)}
 .btn:disabled{opacity:0.4;cursor:not-allowed}
-.btn-accent{background:var(--accent);color:#000;border-color:var(--accent)}
+.btn-accent{background:var(--accent);color:var(--accent-contrast);border-color:var(--accent)}
 .btn-accent:hover{background:#00c49a}
 .btn-danger{background:var(--red);color:#fff;border-color:var(--red)}
 .btn-danger:hover{background:#c73a52}
@@ -189,7 +232,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 /* Status grid */
 .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 32px}
-.stat{padding:6px 0;font-size:14px;display:flex;justify-content:space-between;border-bottom:1px solid #25254533}
+.stat{padding:6px 0;font-size:14px;display:flex;justify-content:space-between;border-bottom:1px solid var(--row-border)}
 .stat:last-child{border-bottom:none}
 .stat .k{color:var(--text-dim)}
 .stat .v{color:var(--text);font-weight:500;text-align:right;padding-right:8px}
@@ -236,9 +279,9 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .ble-empty{color:var(--text-dim);font-size:13px;padding:8px 0}
 
 /* Charts */
-.chart-card{background:#0a0a16;border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;overflow:hidden}
+.chart-card{background:var(--chart-surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;overflow:hidden}
 .chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.chart-header .label{font-size:12px;color:var(--text-dim)}
+.chart-header .label{font-size:12px;color:var(--chart-label)}
 .chart-header .value{font-size:20px;font-weight:700;font-family:monospace}
 .chart-header .unit{font-size:12px;color:var(--text-dim);margin-left:4px}
 .chart-row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -247,7 +290,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 
 /* Upload */
 .upload-area{border:2px dashed var(--border);border-radius:8px;padding:40px;text-align:center;margin:12px 0;cursor:pointer}
-.upload-area.dragover{border-color:var(--accent);background:#ffffff08}
+.upload-area.dragover{border-color:var(--accent);background:var(--hover)}
 .progress{height:6px;background:var(--border);border-radius:3px;margin-top:12px;overflow:hidden;display:none}
 .progress .bar{height:100%;background:var(--accent);width:0;transition:width 0.3s}
 
@@ -255,6 +298,8 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .msg{padding:8px 12px;border-radius:6px;margin:8px 0;font-size:13px;display:none}
 .msg.ok{display:block;background:#064e3b;color:var(--green);border:1px solid #065f46}
 .msg.err{display:block;background:#450a0a;color:var(--red);border:1px solid #7f1d1d}
+:root[data-theme="light"] .msg.ok,:root[data-theme="light"] .toast.ok{background:#dcfce7;color:#166534;border-color:#86efac}
+:root[data-theme="light"] .msg.err,:root[data-theme="light"] .toast.err{background:#fee2e2;color:#991b1b;border-color:#fca5a5}
 
 /* Toast */
 .toast-container{position:fixed;top:16px;right:16px;z-index:1000;display:flex;flex-direction:column;gap:8px;pointer-events:none}
@@ -272,7 +317,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 #storageEntries:not(:empty){border:1px solid var(--border-light);border-radius:8px;overflow:hidden;background:var(--surface)}
 .storage-row{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 12px;border-bottom:1px solid var(--border)}
 .storage-row:last-child{border-bottom:none}
-.storage-row:hover{background:#ffffff04}
+.storage-row:hover{background:var(--hover)}
 .storage-row input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
 .storage-row a{color:var(--text);font-size:14px;font-weight:600;text-decoration:none;overflow-wrap:anywhere;cursor:pointer}
 .storage-row a:hover{color:var(--accent)}
@@ -286,7 +331,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 #storagePage{font-size:12px;color:var(--text-dim);margin:0 4px}
 
 /* Spinner */
-.spinner{display:none;border:3px solid #333;border-top:3px solid var(--accent);border-radius:50%;width:20px;height:20px;animation:spin 0.8s linear infinite;margin:0 auto}
+.spinner{display:none;border:3px solid var(--border-light);border-top:3px solid var(--accent);border-radius:50%;width:20px;height:20px;animation:spin 0.8s linear infinite;margin:0 auto}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Bottom nav */
@@ -294,6 +339,14 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .bottom-nav .bnav-item{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--text-dim);cursor:pointer;padding:4px 10px;text-decoration:none;flex-shrink:0;white-space:nowrap}
 .bottom-nav .bnav-item .icon{font-size:18px}
 .bottom-nav .bnav-item.active{color:var(--accent)}
+.theme-toggle,.icon-button{display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;padding:4px;flex:none}
+.theme-toggle svg,.icon-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.theme-toggle .icon-sun{color:#f59e0b}
+.theme-toggle .icon-moon{color:#6366f1}
+:root[data-theme="dark"] .theme-toggle .icon-sun{color:#fbbf24}
+:root[data-theme="light"] .theme-toggle .icon-moon{color:#4f46e5}
+:root[data-theme="dark"] .theme-toggle .icon-moon,:root[data-theme="light"] .theme-toggle .icon-sun{display:none}
+:root[data-theme="light"] .btn-accent:hover{background:#006448}
 
 /* Responsive */
 @media(max-width:768px){
@@ -324,6 +377,10 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 </head>
 <body>
 
+<svg aria-hidden="true" width="0" height="0" style="position:absolute">
+  <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.42 1.42"/><path d="m17.65 17.65 1.42 1.42"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.35 17.65-1.42 1.42"/><path d="m19.07 4.93-1.42 1.42"/></symbol>
+  <symbol id="icon-moon" viewBox="0 0 24 24"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"/></symbol>
+</svg>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -357,7 +414,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
           <span id="topSsid">WiFi: --</span>
         </span>
         <span title="Free memory"><span id="topHeap">-- heap</span><span id="topPsram" hidden></span></span>
-        <button class="btn" onclick="loadStatus()" style="padding:4px 12px;font-size:11px">Refresh</button>
+        <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false" onclick="toggleTheme()"><svg class="icon-sun"><use href="#icon-sun"/></svg><svg class="icon-moon"><use href="#icon-moon"/></svg></button>
       </div>
     </div>
 
@@ -597,7 +654,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
             <input type="text" id="cmdInput" style="flex:1;width:auto;font-family:monospace;border-radius:6px" placeholder="Enter command..." onkeydown="if(event.key==='Enter')sendCmd()">
             <button class="btn btn-accent" onclick="sendCmd()">Send</button>
           </div>
-          <div style="font-size:12px;color:#555;margin-top:6px">$STATUS, $CONFIG GET key, $OXI SCAN, G S #BID, P S #ROP 0001</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:6px">$STATUS, $CONFIG GET key, $OXI SCAN, G S #BID, P S #ROP 0001</div>
         </div>
       </div>
 
@@ -2258,6 +2315,14 @@ const reportMetrics = [
   {id:'mv',label:'MV',name:'Minute ventilation',unit:'L/min',channel:'MinVent',color:'#a78bfa',digits:2},
 ];
 
+function reportMetricColor(metric) {
+  if (document.documentElement.dataset.theme !== 'light') return metric.color;
+  return {
+    usage:'#0369a1',ahi:'#7e22ce',pressure:'#15803d',
+    leak:'#c2410c',vt:'#be185d',mv:'#6d28d9'
+  }[metric.id] || metric.color;
+}
+
 function renderReportMetrics(data) {
   const focused = document.activeElement?.dataset.metric;
   const fragment = document.createDocumentFragment();
@@ -2267,7 +2332,7 @@ function renderReportMetrics(data) {
     const value = metric.field ? data[metric.field] : data.channels?.find(c => c.id === metric.channel)?.mean;
     const tile = document.createElement(data.view === 'day' ? 'button' : 'div'); tile.className = 'report-metric';
     tile.dataset.metric = metric.id;
-    tile.style.cssText = '--metric-color:'+metric.color;
+    tile.style.cssText = '--metric-color:'+reportMetricColor(metric);
     tile.title = metric.name || metric.label;
     if (data.view === 'day') {
       tile.type = 'button';
@@ -2319,10 +2384,10 @@ function drawReportHistory(svg, metric, trend, expanded) {
     if (!Number.isFinite(value)) { previous = false; return; }
     path += `${previous ? 'L' : 'M'}${x(i)} ${y(value)} `; previous = true;
   });
-  node('path',{d:path,fill:'none',stroke:metric.color,'stroke-width':1.5});
+  node('path',{d:path,fill:'none',stroke:reportMetricColor(metric),'stroke-width':1.5});
   points.forEach((value,i) => {
     if (!Number.isFinite(value)) return;
-    const dot = node('circle',{cx:x(i),cy:y(value),r:expanded ? 3 : 1.4,fill:metric.color});
+    const dot = node('circle',{cx:x(i),cy:y(value),r:expanded ? 3 : 1.4,fill:reportMetricColor(metric)});
     const title = document.createElementNS('http://www.w3.org/2000/svg','title');
     title.textContent = reportDate(reportPlot.history.first_day+i)+': '+(metric.id === 'usage' ? reportDuration(value) : reportNumber(value)+' '+metric.unit);
     dot.append(title);
@@ -2684,6 +2749,13 @@ function renderReportChannelOptions() {
 }
 
 function reportChannelColor(id) {
+  if (document.documentElement.dataset.theme === 'light') {
+    return {
+      flow:'#4f46e5',press:'#087f9c',pressure:'#087f9c',eprpress:'#b45309',
+      maskpress:'#15803d',leak:'#b45309',minvent:'#15803d',resprate:'#087f9c',
+      tidvol:'#475569',spo2:'#15803d',pulse:'#be123c',flowlim:'#a16207',snore:'#be185d'
+    }[String(id).toLowerCase()] || '#087f9c';
+  }
   return {flow:'#818cf8',press:'#22d3ee',pressure:'#22d3ee',eprpress:'#fb923c',maskpress:'#4ade80',
     leak:'#fb923c',minvent:'#4ade80',resprate:'#22d3ee',tidvol:'#cbd5e1',spo2:'#4ade80',pulse:'#e94560',
     flowlim:'#facc15',snore:'#f472b6'}[String(id).toLowerCase()] || '#22d3ee';
@@ -2901,8 +2973,19 @@ function reportTimeTicks(view, width) {
   return ticks;
 }
 
+function chartPalette() {
+  const css = getComputedStyle(document.documentElement);
+  return {
+    surface: css.getPropertyValue('--chart-surface').trim(),
+    grid: css.getPropertyValue('--chart-grid').trim(),
+    zero: css.getPropertyValue('--chart-zero').trim(),
+    label: css.getPropertyValue('--chart-label').trim()
+  };
+}
+
 function drawEdfChart(canvas, channel, data, color) {
   const {ctx,W,H} = prepareReportCanvas(canvas);
+  const palette = chartPalette();
   const members = (Array.isArray(channel) ? channel : [channel]).filter(Boolean);
   const firstChannel = members[0];
   const pad = {l:44,r:8,t:18,b:22}, gw = W-pad.l-pad.r, gh = H-pad.t-pad.b;
@@ -2911,12 +2994,12 @@ function drawEdfChart(canvas, channel, data, color) {
   const {low,high,step} = reportPlot.axes?.[firstChannel?.id]
     || reportAxes(data?.channels || [],view)[firstChannel?.id] || {low:0,high:1,step:0.25};
   const y = value => pad.t + gh*(1-(value-low)/(high-low));
-  ctx.clearRect(0,0,W,H); ctx.fillStyle = '#08081a'; ctx.fillRect(0,0,W,H);
+  ctx.clearRect(0,0,W,H); ctx.fillStyle = palette.surface; ctx.fillRect(0,0,W,H);
   ctx.font = '11px sans-serif'; ctx.lineWidth = 1;
-  ctx.fillStyle = '#9aa0b5'; ctx.textAlign = 'right';
+  ctx.fillStyle = palette.label; ctx.textAlign = 'right';
   for (let i = Math.floor(high/step); members.length && i >= Math.ceil(low/step); i--) {
     const v = step*i, yy = y(v);
-    ctx.strokeStyle = v === 0 ? '#50546b' : '#25283d';
+    ctx.strokeStyle = v === 0 ? palette.zero : palette.grid;
     ctx.setLineDash(v === 0 ? [] : [2,4]);
     ctx.beginPath(); ctx.moveTo(pad.l,yy); ctx.lineTo(W-pad.r,yy); ctx.stroke();
     ctx.fillText(reportNumber(v),pad.l-4,yy+3);
@@ -2930,7 +3013,7 @@ function drawEdfChart(canvas, channel, data, color) {
     for (const segment of member.segments || []) drawArtifactSegment(ctx,segment,x,y,member.id === 'Flow');
   }
   drawReportEventMarkers(ctx,data?.events,view,x,pad,gh,members.length > 0);
-  ctx.restore(); ctx.fillStyle = '#9aa0b5'; ctx.strokeStyle = '#50546b';
+  ctx.restore(); ctx.fillStyle = palette.label; ctx.strokeStyle = palette.zero;
   ctx.textAlign = 'center';
   let lastLabelRight = -Infinity;
   for (const {time,label} of reportTimeTicks(view,gw)) {
@@ -4523,27 +4606,28 @@ function drawChart(canvasId, data, label, color, minY, maxY, unit, scale, signed
   var pw = c.parentElement ? c.parentElement.clientWidth - 32 : c.width;
   if (pw > 0 && pw !== c.width) c.width = pw;
   const ctx = c.getContext('2d');
+  const palette = chartPalette();
   const W = c.width, H = c.height;
   const pad = {l:44,r:8,t:18,b:4};
   const gw = W-pad.l-pad.r, gh = H-pad.t-pad.b;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle = '#08081a';
+  ctx.fillStyle = palette.surface;
   ctx.fillRect(0,0,W,H);
   // Grid
-  ctx.strokeStyle = '#1a1a3a';
+  ctx.strokeStyle = palette.grid;
   ctx.setLineDash([2,4]);
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) { const y = pad.t+gh*(i/4); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke(); }
   ctx.setLineDash([]);
   if (signed && minY < 0) {
     const zy = pad.t+gh*(1-(0-minY)/(maxY-minY));
-    ctx.strokeStyle = '#1a1a3a88';
+    ctx.strokeStyle = palette.zero;
     ctx.setLineDash([4,4]);
     ctx.beginPath(); ctx.moveTo(pad.l,zy); ctx.lineTo(W-pad.r,zy); ctx.stroke();
     ctx.setLineDash([]);
   }
   // Y labels
-  ctx.fillStyle = '#555';
+  ctx.fillStyle = palette.label;
   ctx.font = '10px sans-serif';
   ctx.textAlign = 'right';
   for (let i = 0; i <= 4; i++) {
@@ -4588,12 +4672,15 @@ function updateCharts(slowChanged = true) {
   const ps = expandChartScale('press', waveData.press);
   const fs = expandChartScale('flow',  waveData.flow);
   const ls = expandChartScale('leak',  waveData.leak);
-  drawChart('cPress', waveData.press, 'Pressure', '#22d3ee', ps.min, ps.max, '', 50, false);
-  drawChart('cFlow', waveData.flow, 'Flow (L/min)', '#818cf8', fs.min, fs.max, ' ', 8.33, true);
-  drawChart('cLeak', waveData.leak, 'Leak (L/min)', '#fb923c', ls.min, ls.max, '', 0.833, false);
+  const colors = document.documentElement.dataset.theme === 'light'
+    ? {pressure:'#087f9c',flow:'#4f46e5',leak:'#b45309',spo2:'#15803d',pulse:'#be123c'}
+    : {pressure:'#22d3ee',flow:'#818cf8',leak:'#fb923c',spo2:'#4ade80',pulse:'#e94560'};
+  drawChart('cPress', waveData.press, 'Pressure', colors.pressure, ps.min, ps.max, '', 50, false);
+  drawChart('cFlow', waveData.flow, 'Flow (L/min)', colors.flow, fs.min, fs.max, ' ', 8.33, true);
+  drawChart('cLeak', waveData.leak, 'Leak (L/min)', colors.leak, ls.min, ls.max, '', 0.833, false);
   if (slowChanged) {
-    drawChart('cSpo2', slowData.spo2, 'SpO2', '#4ade80', 80, 100, '%', 1, false);
-    drawChart('cPulse', slowData.pulse, 'Pulse', '#e94560', 40, 160, '', 1, false);
+    drawChart('cSpo2', slowData.spo2, 'SpO2', colors.spo2, 80, 100, '%', 1, false);
+    drawChart('cPulse', slowData.pulse, 'Pulse', colors.pulse, 40, 160, '', 1, false);
   }
   // Update chart header values
   var p = waveData.press, f = waveData.flow, lk = waveData.leak,
