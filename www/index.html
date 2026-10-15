@@ -329,7 +329,8 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
     <div class="brand">
       <h1>AirBridge</h1>
       <small id="ver"></small>
-      <small id="verBuild" style="color:#555"></small>
+      <small id="verBuild"></small>
+      <small id="verTarget"></small>
     </div>
     <nav>
       <a class="nav-item active" data-tab="status"><span class="icon">&#9878;</span> Dashboard</a>
@@ -688,7 +689,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
             <div style="font-size:24px">&#9881;</div>
             <div>
               <div style="font-weight:600;font-size:15px">AirBridge Firmware</div>
-              <div style="font-size:12px;color:var(--text-dim)">ESP32 &middot; <span id="espFwVer">--</span></div>
+              <div style="font-size:12px;color:var(--text-dim)">ESP32 &middot; <span id="espFwTarget">--</span> &middot; <span id="espFwVer">--</span></div>
             </div>
           </div>
           <div class="row">
@@ -1223,6 +1224,8 @@ function showTab(id) {
     if (otaStatus) renderOtaStatus(otaStatus);
     var ev = document.getElementById('espFwVer');
     if (ev && lastStatus.version) ev.textContent = lastStatus.version + (lastStatus.built ? ' (' + lastStatus.built + ')' : '');
+    ev = document.getElementById('espFwTarget');
+    if (ev) ev.textContent = lastStatus.target || '--';
   }
 }
 
@@ -1280,9 +1283,23 @@ function renderStatus(d) {
   if (d.ssid !== undefined) {
     el = document.getElementById('topSsid');
     el.textContent = 'WiFi: ' + (d.ssid || '--');
-    el.title = d.ssid || 'Not connected';
   }
   if (d.rssi !== undefined) updateWifiBars(document.getElementById('topWifi'), d.rssi);
+  if (d.ssid !== undefined || d.ip !== undefined || d.ap_ip !== undefined || d.rssi !== undefined) {
+    const details = [];
+    if (lastStatus.ssid) details.push('Network: ' + lastStatus.ssid);
+    if (lastStatus.rssi !== undefined && Number(lastStatus.rssi) < 0)
+      details.push('Signal: ' + fmtRssi(lastStatus.rssi));
+    if (lastStatus.ip && lastStatus.ip !== '0.0.0.0')
+      details.push('LAN IP: ' + lastStatus.ip);
+    if (lastStatus.ap_ip && lastStatus.ap_ip !== '0.0.0.0')
+      details.push('Access point IP: ' + lastStatus.ap_ip);
+    const tooltip = details.join('\n') || 'No WiFi connection';
+    el = document.getElementById('topSsid');
+    if (el) { el.title = tooltip; el.setAttribute('aria-label', tooltip.replace(/\n/g, ', ')); }
+    el = document.getElementById('topWifi');
+    if (el) el.title = tooltip;
+  }
   if (d.uptime !== undefined) {
     var s = d.uptime, days = (s/86400)|0, hrs = ((s%86400)/3600)|0, mins = ((s%3600)/60)|0;
     var ut = '';
@@ -1294,6 +1311,13 @@ function renderStatus(d) {
     document.getElementById('ver').textContent = d.version;
     var vb = document.getElementById('verBuild');
     if (vb && d.built) vb.textContent = d.built;
+    var firmwareVersion = document.getElementById('espFwVer');
+    if (firmwareVersion)
+      firmwareVersion.textContent = d.version + (lastStatus.built ? ' (' + lastStatus.built + ')' : '');
+  }
+  if (d.target) {
+    el = document.getElementById('verTarget'); if (el) el.textContent = d.target;
+    el = document.getElementById('espFwTarget'); if (el) el.textContent = d.target;
   }
 
   if (!document.getElementById('p-status').classList.contains('active')) return;
@@ -4199,7 +4223,10 @@ let otaStatus = null, otaWatch = null, otaSerial = 0;
 
 function renderOtaStatus(d) {
   var version = document.getElementById('espFwVer');
-  if (version && lastStatus.version) version.textContent = lastStatus.version;
+  if (version && lastStatus.version)
+    version.textContent = lastStatus.version + (lastStatus.built ? ' (' + lastStatus.built + ')' : '');
+  var target = document.getElementById('espFwTarget');
+  if (target) target.textContent = lastStatus.target || '--';
 
   var latest = d.update_version || '--';
   if (d.state === 'disabled') latest = 'Checks disabled';

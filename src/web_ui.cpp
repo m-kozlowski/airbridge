@@ -371,6 +371,7 @@ static void appendStatusIdentity(Output &json, bool comma = true) {
     AirSenseState::identity(identity);
     jsonAddString(json, "version", airbridge_version(), comma);
     jsonAddString(json, "built", airbridge_build_date());
+    jsonAddString(json, "target", AB_OTA_RELEASE_TARGET);
     jsonAddString(json, "pna", identity.pna);
     jsonAddString(json, "srn", identity.srn);
 }
@@ -395,6 +396,8 @@ static void appendStatusFields(Output &json, const DeviceStatus::Snapshot &statu
         jsonAddInt(json, "psram_free", aircannect::Memory::psram_available() ?
                    static_cast<int>(ESP.getFreePsram()) : -1);
         jsonAddString(json, "ssid", WiFiSetup::connected_ssid());
+        jsonAddString(json, "ip", WiFiSetup::is_connected() ? WiFi.localIP().toString().c_str() : "");
+        jsonAddString(json, "ap_ip", WiFi.softAPIP().toString().c_str());
         jsonAddInt(json, "rssi", WiFiSetup::current_rssi());
         jsonAddInt(json, "uptime", millis() / 1000);
     }
@@ -2059,6 +2062,7 @@ static void handleWifiGet(AsyncWebServerRequest *request) {
     jsonAddInt(json, "rssi", WiFiSetup::current_rssi());
     jsonAddInt(json, "net_idx", WiFiSetup::connected_net_idx());
     jsonAddString(json, "ip", WiFiSetup::is_connected() ? WiFi.localIP().toString().c_str() : "");
+    jsonAddString(json, "ap_ip", WiFi.softAPIP().toString().c_str());
     jsonAddString(json, "roam", cfg.wifi_roam ? "1" : "0");
 
     json += ",\"networks\":[";
