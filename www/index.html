@@ -7,6 +7,7 @@
 <script>
 try {
   document.documentElement.dataset.theme=localStorage.getItem('airbridge.theme')==='light'?'light':'dark';
+  document.documentElement.dataset.language=localStorage.getItem('airbridge.language')==='pl'?'pl':'en';
 } catch(e) {}
 function applyTheme(theme) {
   const light = theme === 'light';
@@ -98,6 +99,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .dashboard-grid>.card{min-width:0;margin-bottom:0}
 .dashboard-grid .time-row{gap:12px;flex-wrap:wrap}
 .dashboard-grid .time-row .value{font-size:12px;margin-left:auto}
+.dashboard-controls{gap:6px;flex-wrap:nowrap}
+.dashboard-controls .btn{flex:1;min-width:0;padding:6px 8px;white-space:nowrap}
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:12px}
 .card h3{color:var(--accent);margin-bottom:12px;font-size:14px;text-transform:uppercase;letter-spacing:0.5px}
 .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
@@ -349,6 +352,7 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 :root[data-theme="light"] .theme-toggle .icon-moon{color:#4f46e5}
 :root[data-theme="dark"] .theme-toggle .icon-moon,:root[data-theme="light"] .theme-toggle .icon-sun{display:none}
 :root[data-theme="light"] .btn-accent:hover{background:#006448}
+.theme-language{height:30px;min-width:58px;padding:3px 6px;border:1px solid var(--border-light);border-radius:8px;background:var(--surface);color:var(--text);font:inherit;font-size:11px;font-weight:600}
 
 /* Responsive */
 @media(max-width:768px){
@@ -428,6 +432,10 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
         </span>
         <span title="Free memory"><span id="topHeap">-- heap</span><span id="topPsram" hidden></span></span>
         <button class="btn theme-toggle" id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch to light theme" aria-pressed="false" onclick="toggleTheme()"><svg class="icon-sun"><use href="#icon-sun"/></svg><svg class="icon-moon"><use href="#icon-moon"/></svg></button>
+        <select class="theme-language" id="languageSelect" aria-label="Language" title="Language" onchange="applyLanguage(this.value)">
+          <option value="en">EN</option>
+          <option value="pl">PL</option>
+        </select>
         <button class="btn icon-button" id="refreshButton" type="button" onclick="loadStatus()" aria-label="Refresh" title="Refresh"><svg><use href="#icon-refresh"/></svg></button>
       </div>
     </div>
@@ -455,10 +463,10 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
               <span class="label">Motor Hours</span>
               <span class="value" id="dashMhr">--</span>
             </div>
-            <div class="btn-group">
-              <button class="btn" onclick="ropCmd('start')" id="btnTherapy" style="font-size:11px;padding:6px 14px">Therapy</button>
-              <button class="btn" onclick="ropCmd('standby')" id="btnStandby" style="font-size:11px;padding:6px 14px">Standby</button>
-              <button class="btn" onclick="ropCmd('energy_save')" id="btnPwrSave" style="font-size:11px;padding:6px 14px">Power Save</button>
+            <div class="btn-group dashboard-controls">
+              <button class="btn" onclick="ropCmd('start')" id="btnTherapy" style="font-size:11px">Therapy</button>
+              <button class="btn" onclick="ropCmd('standby')" id="btnStandby" style="font-size:11px">Standby</button>
+              <button class="btn" onclick="ropCmd('energy_save')" id="btnPwrSave" style="font-size:11px">Power Save</button>
             </div>
           </div>
 
@@ -874,6 +882,238 @@ let settings = [], curMode = 0;
 // SSE
 let evtSrc = null;
 let liveEvtSrc = null;
+const polishText = {
+  'AirBridge':'AirBridge','Pressure':'Ciśnienie','Flow (L/min)':'Przepływ (l/min)',
+  'Leak (L/min)':'Nieszczelność (l/min)','Flow':'Przepływ','Pulse':'Tętno','Running':'Terapia trwa',
+  'Power Recovery':'Przywracanie zasilania','Calibration':'Kalibracja','Upgrade':'Aktualizacja',
+  'IDLE':'Gotowość','ERROR':'Błąd','STREAMING':'Przesyłanie danych',
+  'DISCONNECTED':'Rozłączono','SCANNING':'Skanowanie','DISABLED':'Wyłączono',
+  'Therapy time':'Czas terapii',
+  'Dashboard':'Pulpit','Sleep Report':'Raport snu','Sync':'Synchronizacja',
+  'Clinical':'Kliniczne','Oximetry':'Oksymetria','Console':'Konsola',
+  'Storage':'Pliki','Config':'Konfiguracja','OTA Upload':'Aktualizacja OTA',
+  'WiFi: --':'Wi-Fi: --','-- heap':'-- pamięci RAM','No WiFi connection':'Brak połączenia Wi-Fi',
+  'Refresh':'Odśwież',
+  'Device':'Urządzenie','Standby':'Czuwanie','Serial':'Numer seryjny',
+  'Therapy mode':'Tryb terapii','Motor Hours':'Godziny pracy','Therapy':'Terapia',
+  'Power Save':'Oszczędzanie','System':'System','AirBridge Time':'Czas AirBridge',
+  'ResMed Time':'Czas ResMed','NTP':'NTP','To ResMed':'Do ResMed',
+  'From ResMed':'Z ResMed','SD card':'Karta SD','Pulse Rate':'Tętno',
+  'Source':'Źródło','AirSense':'AirSense','Feed: --':'Przekazywanie: --',
+  'Live Telemetry':'Telemetria na żywo','Mask Pressure':'Ciśnienie w masce',
+  'Flow Rate':'Przepływ','Mask Leak':'Nieszczelność maski',
+  'View':'Widok','Day':'Dzień','7 days':'7 dni','30 days':'30 dni',
+  '90 days':'90 dni','180 days':'180 dni','365 days':'365 dni',
+  'Therapy date':'Data terapii','Last saved day':'Ostatni zapisany dzień',
+  'Latest':'Najnowsza','Waiting for report availability.':'Oczekiwanie na dostępność raportu.',
+  'Therapy day':'Dzień terapii','Statistics':'Statystyki','Channel':'Kanał',
+  'Min':'Min.','Mean':'Średnia','Median':'Mediana','P95':'P95','Max':'Maks.',
+  'Settings':'Ustawienia','Mask intervals':'Przedziały terapii',
+  'Charts':'Wykresy','Reset':'Resetuj','Events':'Zdarzenia','Comfort':'Komfort',
+  'Accessories':'Akcesoria','Options':'Opcje','Configuration':'Konfiguracja',
+  'Save All':'Zapisz wszystko','Oximeter Status':'Stan oksymetru',
+  'Start Feed':'Rozpocznij przekazywanie','Disconnect':'Rozłącz',
+  'Disable':'Wyłącz','Scan for Devices':'Skanuj urządzenia',
+  'Start Scan':'Rozpocznij skanowanie','Known Devices':'Znane urządzenia',
+  'Forget All':'Usuń wszystkie','Command Console':'Konsola poleceń',
+  'Send':'Wyślij','Initial setup':'Konfiguracja początkowa',
+  'Network name':'Nazwa sieci','WiFi password':'Hasło Wi-Fi',
+  'Leave the network name empty to keep saved networks. Your current access point stays available while connecting.':
+    'Pozostaw nazwę sieci pustą, aby zachować zapisane sieci. Obecny punkt dostępowy będzie działał podczas łączenia.',
+  'Open on the local network':'Otwórz w sieci lokalnej',
+  'Setup saved. You can change these settings in Config and Sync.':
+    'Zapisano konfigurację. Te ustawienia możesz zmienić w Konfiguracji i Synchronizacji.',
+  'Open dashboard':'Otwórz pulpit','Set up oximetry':'Skonfiguruj oksymetr',
+  'Back':'Wstecz','Skip':'Pomiń','Next':'Dalej','Later':'Później',
+  'Device Configuration':'Konfiguracja urządzenia','WiFi networks':'Sieci Wi-Fi',
+  'Add Network':'Dodaj sieć','Sync requires a build with SD support.':
+    'Synchronizacja wymaga wersji firmware’u z obsługą karty SD.',
+  'Up':'W górę','Share via USB':'Udostępnij przez USB',
+  'Download folder ZIP':'Pobierz folder ZIP','Download selected ZIP':'Pobierz wybrane jako ZIP',
+  'Delete selected':'Usuń zaznaczone','Previous':'Poprzednia','AirBridge Firmware':'Firmware AirBridge',
+  'Latest release':'Najnowsze wydanie','Check for updates':'Sprawdź aktualizacje',
+  'Install update':'Zainstaluj aktualizację','Select firmware .bin or .bin.zlib':
+    'Wybierz plik firmware’u .bin lub .bin.zlib','or drag and drop here':'lub przeciągnij go tutaj',
+  'Reboot to new firmware':'Uruchom ponownie z nowym firmware’em',
+  'ResMed Firmware':'Firmware ResMed','Select firmware image':'Wybierz obraz firmware’u',
+  'Flash to ResMed':'Wgraj do ResMed','Block type':'Typ bloku','Auto-detect':'Wykryj automatycznie',
+  'Full image (CCX+CDX, skip BLX)':'Pełny obraz (CCX+CDX, pomiń BLX)',
+  'CMX (Config+Firmware)':'CMX (konfiguracja + firmware)',
+  'CDX (Firmware only)':'CDX (tylko firmware)','CCX (Config only)':'CCX (tylko konfiguracja)',
+  'BLX (Bootloader)':'BLX (program rozruchowy)','Include bootloader (BLX)':'Dołącz program rozruchowy (BLX)',
+  'Force BLX even if BID mismatches':'Wymuś BLX nawet przy niezgodnym BID',
+  'Flash':'Wgraj','Cancel':'Anuluj','Home':'Start','Report':'Raport',
+  'Oxi':'Oksymetr','CLI':'Konsola','OTA':'OTA',
+  'Language':'Język','Free memory':'Wolna pamięć','SSE connected':'Połączono przez SSE',
+  'Cannot read WiFi status':'Nie można odczytać stanu Wi-Fi',
+  'Cannot read device status. Reload to retry.':'Nie można odczytać stanu urządzenia. Odśwież, aby spróbować ponownie.',
+  'Add a network or select AP only.':'Dodaj sieć lub wybierz tryb „Tylko AP”.',
+  'Status read failed':'Nie udało się odczytać stanu',
+  'Oximetry status read failed':'Nie udało się odczytać stanu oksymetru',
+  'Upload error':'Błąd przesyłania','Flash failed':'Wgrywanie nie powiodło się',
+  'Flash completed successfully!':'Wgrywanie zakończone powodzeniem!',
+  'Flash status unavailable. The operation may still be running; refresh to check.':
+    'Stan wgrywania jest niedostępny. Operacja może nadal trwać; odśwież, aby sprawdzić.',
+  'Connection lost; waiting for device...':'Utracono połączenie; oczekiwanie na urządzenie...',
+  'Previous report':'Poprzedni raport','Select all':'Zaznacz wszystko',
+  'Network':'Sieć','Web access':'Dostęp do interfejsu','Time':'Czas',
+  'Oximetry':'Oksymetria','UART':'UART','SMB':'SMB','SleepHQ':'SleepHQ',
+  'Firmware updates':'Aktualizacje firmware’u','Logging':'Logowanie','Other':'Inne',
+  'hostname':'Nazwa hosta','wifi_mode':'Tryb pracy Wi-Fi','wifi_roam':'Roaming Wi-Fi',
+  'wifi_country':'Kod kraju Wi-Fi','tcp_port':'Port poleceń TCP',
+  'oxi_enabled':'Obsługa oksymetru BLE','oxi_auto_start':'Automatycznie uruchamiaj przekazywanie po połączeniu',
+  'oxi_feed_therapy_only':'Przekazuj dane tylko podczas terapii',
+  'oxi_interval_ms':'Interwał przekazywania (ms)',
+  'oxi_lframe_continuous':'Wysyłaj ramki L także bez poprawnego odczytu',
+  'uart_cmd_timeout_ms':'Limit czasu odpowiedzi polecenia (ms)',
+  'allow_transparent_during_therapy':'Zezwalaj na surowe przekazywanie UART podczas terapii',
+  'debug_port':'Port strumienia logów diagnostycznych (tylko odczyt)',
+  'syslog_en':'Przekazuj logi do serwera syslog UDP',
+  'syslog_host':'Adres IPv4 serwera syslog',
+  'syslog_port':'Port syslog UDP (1-65535, domyślnie 514)',
+  'http_port':'Port serwera WWW','http_user':'Nazwa użytkownika interfejsu',
+  'http_pass':'Hasło interfejsu',
+  'auth_whitelist':'Pomiń logowanie dla zaufanych adresów IPv4, podsieci CIDR lub zakresów adresów. Oddziel przecinkami. Puste = brak; * = wszyscy klienci IPv4. Maks. 160 znaków.',
+  'update_url':'Adres URL manifestu wydań (pusty wyłącza automatyczne sprawdzanie)',
+  'ntp_server':'Serwer NTP (pusty = DHCP lub pool.ntp.org)',
+  'tz':'Ciąg strefy czasowej POSIX',
+  'resmed_time':'Automatycznie synchronizuj zegar ResMed przez NTP',
+  'udp_oxi_port':'Port oksymetrii UDP (0 = wyłączony)',
+  'smb_enabled':'Włącz synchronizację SMB',
+  'smb_auto_after_therapy':'Synchronizuj zaległości przy uruchomieniu i po terapii',
+  'smb_endpoint':'//host/udział/ścieżka (opcjonalnie)','smb_user':'Użytkownik SMB',
+  'smb_password':'Hasło SMB','sleephq_enabled':'Włącz synchronizację SleepHQ',
+  'sleephq_auto_after_therapy':'Synchronizuj zaległości przy uruchomieniu i po terapii',
+  'sleephq_client_id':'Identyfikator klienta API SleepHQ',
+  'sleephq_client_secret':'Sekret klienta API SleepHQ',
+  'sleephq_team_id':'Opcjonalny identyfikator zespołu (pusty = wykrywanie automatyczne)',
+  'sleephq_device_id':'Opcjonalny identyfikator urządzenia SleepHQ',
+  'Auto (STA + AP fallback)':'Automatyczny (STA + awaryjny AP)',
+  'AP only':'Tylko AP','Off':'Wyłączone','STA only':'Tylko STA',
+  'STA+AP always':'Zawsze STA + AP','Manual':'Ręcznie','Automatic':'Automatycznie',
+  '(unchanged)':'(bez zmian)','(empty = remove)':'(puste = usuń)',
+  'Bring device online':'Połącz urządzenie z siecią',
+  'Loading...':'Ładowanie...','Save':'Zapisz','Apply':'Zastosuj','Close':'Zamknij',
+  'Delete':'Usuń','Edit':'Edytuj','Add':'Dodaj','Remove':'Usuń','Search':'Szukaj',
+  'Enabled':'Włączone','Disabled':'Wyłączone','Connected':'Połączono',
+  'Disconnected':'Rozłączono','Available':'Dostępne','Current':'Aktualne',
+  'Checking...':'Sprawdzanie...','Install':'Zainstaluj','Update':'Aktualizuj',
+  'Status':'Stan','Name':'Nazwa','Password':'Hasło','Network':'Sieć',
+  'Timezone':'Strefa czasowa','Save & next':'Zapisz i dalej','Finish':'Zakończ',
+  'Initial Setup':'Konfiguracja początkowa','SMB (optional)':'SMB (opcjonalnie)',
+  'SleepHQ (optional)':'SleepHQ (opcjonalnie)','Access':'Dostęp',
+  'AirSense':'AirSense','Oximetry':'Oksymetria'
+};
+const originalTextNodes = new WeakMap();
+const originalAttributes = new WeakMap();
+function translatedValue(value, language) {
+  if (language !== 'pl') return value;
+  return value.split('\n').map(line => {
+    const leading = line.match(/^\s*/)[0], trailing = line.match(/\s*$/)[0];
+    const phrase = line.trim();
+    if (Object.hasOwn(polishText, phrase)) return leading + polishText[phrase] + trailing;
+    const patterns = [
+      [/^Switch to light theme$/, 'Przełącz na jasny motyw'],
+      [/^Switch to dark theme$/, 'Przełącz na ciemny motyw'],
+      [/^WiFi: (.*)$/, 'Wi-Fi: $1'],
+      [/^Network: (.*)$/, 'Sieć: $1'],
+      [/^Signal: (.*)$/, 'Sygnał: $1'],
+      [/^LAN IP: (.*)$/, 'IP sieci lokalnej: $1'],
+      [/^Access point IP: (.*)$/, 'IP punktu dostępowego: $1'],
+      [/^Up: (.*)$/, 'Czas pracy: $1'],
+      [/^(\d+(?:\.\d+)?) KB heap$/, '$1 KB pamięci RAM'],
+      [/^\/ (\d+(?:\.\d+)?) MB PSRAM$/, '/ $1 MB pamięci PSRAM'],
+      [/^Feed: yes$/, 'Przekazywanie: tak'],
+      [/^Feed: no$/, 'Przekazywanie: nie'],
+      [/^Feed: (.*)$/, 'Przekazywanie: $1'],
+      [/^Detected: (.*)$/, 'Wykryto: $1'],
+      [/^Continue at (.*)$/, 'Kontynuuj pod adresem $1'],
+      [/^Upload failed: (.*)$/, 'Przesyłanie nie powiodło się: $1'],
+      [/^Flash started: (.*)$/, 'Rozpoczęto wgrywanie: $1'],
+      [/^Flash finished: (.*)$/, 'Zakończono wgrywanie: $1'],
+      [/^Install (.+)$/, 'Zainstaluj $1'],
+      [/^Error: (.*)$/, 'Błąd: $1'],
+      [/^Save not confirmed: (.*)$/, 'Nie potwierdzono zapisu: $1'],
+      [/^State: (.*)$/, 'Stan: $1'],
+      [/^Saved: (.*)$/, 'Zapisane: $1'],
+      [/^(.+) · avg$/, '$1 · śr.']
+    ];
+    for (const [pattern, replacement] of patterns) {
+      if (pattern.test(phrase)) return leading + phrase.replace(pattern, replacement) + trailing;
+    }
+    return line;
+  }).join('\n');
+}
+function translateTextNode(node, language, refresh = false) {
+  if (!node.parentElement || node.parentElement.closest('script,style,svg')) return;
+  let original = originalTextNodes.get(node);
+  if (original === undefined) {
+    original = node.nodeValue;
+    originalTextNodes.set(node, original);
+  } else if (refresh && node.nodeValue !== translatedValue(original, language)) {
+    original = node.nodeValue;
+    originalTextNodes.set(node, original);
+  }
+  const value = translatedValue(original, language);
+  if (node.nodeValue !== value) node.nodeValue = value;
+}
+function translateAttribute(element, attribute, language, refresh = false) {
+  if (!element.hasAttribute(attribute)) return;
+  let originals = originalAttributes.get(element);
+  if (!originals) { originals = new Map(); originalAttributes.set(element, originals); }
+  let original = originals.get(attribute);
+  const current = element.getAttribute(attribute);
+  if (original === undefined || (refresh && current !== translatedValue(original, language))) {
+    original = current;
+    originals.set(attribute, original);
+  }
+  const value = translatedValue(original, language);
+  if (current !== value) element.setAttribute(attribute, value);
+}
+function translateElement(element, language, refresh = false) {
+  const translateAttributes = target => {
+    for (const attribute of ['title','aria-label','placeholder'])
+      translateAttribute(target, attribute, language, refresh);
+  };
+  translateAttributes(element);
+  element.querySelectorAll('[title],[aria-label],[placeholder]').forEach(translateAttributes);
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  while (walker.nextNode()) translateTextNode(walker.currentNode, language, refresh);
+}
+function applyLanguage(language) {
+  const selected = language === 'pl' ? 'pl' : 'en';
+  document.documentElement.dataset.language = selected;
+  document.documentElement.lang = selected;
+  const select = document.getElementById('languageSelect');
+  if (select) select.value = selected;
+  translateElement(document.body, selected);
+  applyTheme(document.documentElement.dataset.theme);
+  try { localStorage.setItem('airbridge.language', selected); } catch(e) {}
+}
+const languageObserver = new MutationObserver(records => {
+  const language = document.documentElement.dataset.language || 'en';
+  for (const record of records) {
+    if (record.type === 'characterData') {
+      translateTextNode(record.target, language, true);
+      continue;
+    }
+    if (record.type === 'attributes') {
+      translateAttribute(record.target, record.attributeName, language, true);
+      continue;
+    }
+    for (const node of record.addedNodes) {
+      if (node.nodeType === Node.TEXT_NODE) translateTextNode(node, language);
+      else if (node.nodeType === Node.ELEMENT_NODE) translateElement(node, language);
+    }
+  }
+});
+applyTheme(document.documentElement.dataset.theme);
+applyLanguage(document.documentElement.dataset.language);
+languageObserver.observe(document.body, {
+  subtree:true,childList:true,characterData:true,attributes:true,attributeOldValue:true,
+  attributeFilter:['title','aria-label','placeholder']
+});
+
 function updateLiveSubscription() {
   const wanted = !document.hidden && document.getElementById('p-status').classList.contains('active');
   if (!wanted) {
@@ -4654,7 +4894,7 @@ function drawChart(canvasId, data, label, color, minY, maxY, unit, scale, signed
   ctx.fillStyle = color;
   ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText(label+': '+curStr, pad.l, 12);
+  ctx.fillText(translatedValue(label, document.documentElement.dataset.language)+': '+curStr, pad.l, 12);
   if (data.length < 2) return;
   // Line with glow
   ctx.strokeStyle = color+'44';
