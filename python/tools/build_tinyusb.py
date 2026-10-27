@@ -64,5 +64,9 @@ def configure(env):
 
 
 if "Import" in globals():
+    from SCons.Script import COMMAND_LINE_TARGETS
+
     Import("env")
-    configure(env)
+    # nobuild uploads an existing image without initializing compiler/linker state.
+    if "nobuild" not in COMMAND_LINE_TARGETS:
+        configure(env)
