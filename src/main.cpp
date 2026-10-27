@@ -97,21 +97,31 @@ static void first_setup_notice() {
 
     char text[Arbiter::LCD_TEXT_MAX + 1];
     const int length = snprintf(text, sizeof(text),
-        "AirBridge connected\nConfigure using %s AP", ap);
+        "AirBridge connected\nAP: %s", ap);
     if (length < 0 || static_cast<size_t>(length) >= sizeof(text)) return;
 
+    char sd_text[24] = {};
 #if AB_STORAGE_HAS_SDCARD
     SdStorage::Status storage;
     SdStorage::get_status(storage);
     if (storage.mounted) {
         const uint32_t tenths_gb = storage.card_bytes / 100000000;
-        snprintf(text + length, sizeof(text) - length, "\nSD: %lu.%lu GB",
+        snprintf(sd_text, sizeof(sd_text), "\nSD: %lu.%lu GB",
             static_cast<unsigned long>(tenths_gb / 10),
             static_cast<unsigned long>(tenths_gb % 10));
     } else {
-        snprintf(text + length, sizeof(text) - length, "\nSD: not detected");
+        snprintf(sd_text, sizeof(sd_text), "\nSD: not detected");
     }
 #endif
+
+    const char *build_date = airbridge_build_date();
+    const int version_limit = static_cast<int>(sizeof(text)) - length
+        - static_cast<int>(strlen(build_date) + strlen(sd_text)) - 3;
+    if (version_limit < 0) return;
+
+    // Keep the AP, build timestamp and SD result intact if the version is long.
+    snprintf(text + length, sizeof(text) - length, "%s\n%.*s\n%s",
+        sd_text, version_limit, airbridge_version(), build_date);
 
     sent = Arbiter::lcd_message(text, 0, true);
 }
