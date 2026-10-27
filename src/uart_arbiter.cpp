@@ -92,7 +92,7 @@ static uint32_t acquisition_remaining_ms() {
     return 0;
 }
 
-static constexpr size_t LCD_COMMAND_SIZE = 32;
+static constexpr size_t LCD_COMMAND_SIZE = sizeof("P S #LCT ") + Arbiter::LCD_TEXT_MAX;
 static constexpr size_t LCD_FRAME_SIZE = 9 + 2 * (LCD_COMMAND_SIZE - 1);
 
 enum class LcdStep : uint8_t { None, Hide, Text, Show, Clear, Expire };
@@ -101,6 +101,7 @@ struct lcd_request_t {
     char text[LCD_COMMAND_SIZE - sizeof("P S #LCT ") + 1];
     uint32_t timeout_ms;
     uint32_t expires_at;
+    bool idle_only;
 };
 
 static uint32_t lcd_clear_at = 0;
@@ -771,8 +772,11 @@ static bool lcd_advance(uart_transaction_t *t);
 
 static bool transaction_source_allowed(const uart_transaction_t *t) {
     if (t->send_window.idle_only && sys_state != SYS_IDLE) return false;
-    if (t->lcd_step != LcdStep::None &&
-        sys_state != SYS_IDLE && sys_state != SYS_THERAPY) return false;
+    if (t->lcd_step != LcdStep::None) {
+        const auto *request = static_cast<const lcd_request_t *>(t->sink_context);
+        if (sys_state != SYS_IDLE &&
+            (request->idle_only || sys_state != SYS_THERAPY)) return false;
+    }
     return uart_source_allowed(t->source);
 }
 
@@ -1750,6 +1754,7 @@ uint32_t Arbiter::get_error_count()    { return stat_error; }
 
 static bool queue_lcd(const lcd_request_t &request, LcdStep step) {
     if (sys_state != SYS_IDLE && sys_state != SYS_THERAPY) return false;
+    if (request.idle_only && sys_state != SYS_IDLE) return false;
 
     uint8_t frame[LCD_FRAME_SIZE];
     int len = qframe_build_cmd("P S #LCA 0000", frame, sizeof(frame));
@@ -1765,11 +1770,12 @@ static bool queue_lcd(const lcd_request_t &request, LcdStep step) {
                              policy, nullptr, &request, true, sizeof(request), step) != nullptr;
 }
 
-bool Arbiter::lcd_message(const char *msg, uint32_t timeout_ms) {
+bool Arbiter::lcd_message(const char *msg, uint32_t timeout_ms, bool idle_only) {
     if (!msg) return false;
     lcd_request_t request = {};
     snprintf(request.text, sizeof(request.text), "%s", msg);
     request.timeout_ms = timeout_ms;
+    request.idle_only = idle_only;
     return queue_lcd(request, LcdStep::Hide);
 }
 

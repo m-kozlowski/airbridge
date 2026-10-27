@@ -20,6 +20,8 @@ namespace WiFiSetup {
     void addresses(uint32_t &sta, uint32_t &ap);
     int8_t current_rssi();
     const char *connected_ssid();
+    // Main-loop snapshot of the running AP; empty while it is unavailable.
+    const char *access_point_ssid();
     uint8_t connected_net_idx();
     int8_t net_rssi(uint8_t idx);
 }

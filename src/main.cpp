@@ -88,6 +88,34 @@ static void serial_poll() {
     }
 }
 
+static void first_setup_notice() {
+    static bool sent = false;
+    if (sent || Config::onboarding_complete() || !AirSenseState::device_standby()) return;
+
+    const char *ap = WiFiSetup::access_point_ssid();
+    if (!ap[0]) return;
+
+    char text[Arbiter::LCD_TEXT_MAX + 1];
+    const int length = snprintf(text, sizeof(text),
+        "AirBridge connected\nConfigure using %s AP", ap);
+    if (length < 0 || static_cast<size_t>(length) >= sizeof(text)) return;
+
+#if AB_STORAGE_HAS_SDCARD
+    SdStorage::Status storage;
+    SdStorage::get_status(storage);
+    if (storage.mounted) {
+        const uint32_t tenths_gb = storage.card_bytes / 100000000;
+        snprintf(text + length, sizeof(text) - length, "\nSD: %lu.%lu GB",
+            static_cast<unsigned long>(tenths_gb / 10),
+            static_cast<unsigned long>(tenths_gb % 10));
+    } else {
+        snprintf(text + length, sizeof(text) - length, "\nSD: not detected");
+    }
+#endif
+
+    sent = Arbiter::lcd_message(text, 0, true);
+}
+
 void setup() {
     Arbiter::prepare_tx(PIN_AS10_TX);
 
@@ -219,6 +247,8 @@ void loop() {
     LiveWebConsumer::tick();
 
     OxiArbiter::poll();
+
+    first_setup_notice();
 
     delay(10);
 }

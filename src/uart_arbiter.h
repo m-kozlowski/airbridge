@@ -221,7 +221,9 @@ namespace Arbiter {
     uint32_t get_error_count();
 
     // Queue a copied LCD request without waiting for UART; false = not queued.
-    bool lcd_message(const char *msg, uint32_t timeout_ms = 0);  // 0 = persistent
+    constexpr size_t LCD_TEXT_MAX = 128;
+    // Text includes literal LF; timeout 0 leaves the message until dismissed.
+    bool lcd_message(const char *msg, uint32_t timeout_ms = 0, bool idle_only = false);
     bool lcd_clear();
 
     uint32_t transparent_activity();

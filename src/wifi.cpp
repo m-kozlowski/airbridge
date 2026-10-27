@@ -25,6 +25,7 @@ static wifi_state_t wf_state = WF_OFF;
 static std::atomic<uint32_t> status_revision{0};
 static std::atomic<uint32_t> sta_address{0}, ap_address{0};
 static std::atomic<bool> ap_address_pending{false};
+static String active_ap_ssid;
 static uint32_t state_entered_ms = 0;
 static bool ntp_done = false;
 
@@ -205,7 +206,12 @@ static void refresh_ap_address() {
     if (!ap_address_pending.exchange(false)) return;
     const uint32_t address = (WiFi.getMode() & WIFI_AP) ?
         static_cast<uint32_t>(WiFi.softAPIP()) : 0;
+    active_ap_ssid = address ? WiFi.softAPSSID() : String();
     if (ap_address.exchange(address) != address) status_revision.fetch_add(1);
+}
+
+const char *WiFiSetup::access_point_ssid() {
+    return ap_address.load() ? active_ap_ssid.c_str() : "";
 }
 
 
