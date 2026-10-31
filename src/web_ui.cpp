@@ -385,6 +385,7 @@ static void appendFirmwareUpload(Output &json, const FileUpload::Status &status)
     jsonAddUInt32(json, "size", status.size);
     jsonAddUInt32(json, "received", status.received);
     jsonAddUInt32(json, "written", status.written);
+    jsonAddUInt32(json, "chunk_bytes", status.chunk_bytes);
     jsonAddString(json, "path", status.path);
     jsonAddString(json, "error", status.error);
     if (status.bootloader) appendFirmwareImage(json, status.image);
@@ -1577,6 +1578,15 @@ static void handleFirmwareBody(AsyncWebServerRequest *request, uint8_t *data,
             request->send(400, "application/json", "{\"error\":\"invalid_chunk\"}");
             return;
         }
+        FileUpload::Status upload;
+        if (id && !FileUpload::copy_status(id, upload)) {
+            request->send(409, "application/json", "{\"error\":\"unknown_id\"}");
+            return;
+        }
+        if (total > (id ? upload.chunk_bytes : FileUpload::INITIAL_CHUNK_BYTES)) {
+            request->send(400, "application/json", "{\"error\":\"invalid_chunk\"}");
+            return;
+        }
         if (!id && (offset || (!request->hasParam("name") && !request->hasParam("path")) ||
             !request->hasParam("size") ||
             !aircannect::parse_uint32_decimal(request->getParam("size")->value().c_str(), size) ||
@@ -1626,8 +1636,11 @@ static void handleFirmwareBody(AsyncWebServerRequest *request, uint8_t *data,
         data, len, input->last && complete);
     if (result != FileUpload::Result::Accepted) {
         FileUpload::cancel_input(input->id);
+        FileUpload::Status upload;
+        const char *error = FileUpload::copy_status(input->id, upload) && upload.error[0]
+            ? upload.error : FileUpload::result_name(result);
         String json = "{\"ok\":false";
-        jsonAddString(json, "error", FileUpload::result_name(result));
+        jsonAddString(json, "error", error);
         json += '}';
         request->send(409, "application/json", json);
         return;
@@ -1696,10 +1709,16 @@ static void handleUploadDone(AsyncWebServerRequest *request) {
         request->send(400, "application/json", "{\"error\":\"upload_incomplete\"}");
         return;
     }
+    FileUpload::Status upload;
+    if (!FileUpload::copy_status(input->id, upload)) {
+        request->send(409, "application/json", "{\"error\":\"unknown_id\"}");
+        return;
+    }
     String json = "{\"ok\":true";
     jsonAddInt(json, "upload_id", input->id);
     if (input->chunked) {
         jsonAddInt(json, "written", input->end);
+        jsonAddInt(json, "chunk_bytes", upload.chunk_bytes);
         json += input->last ? ",\"complete\":true" : ",\"complete\":false";
     }
     json += '}';
@@ -1707,11 +1726,17 @@ static void handleUploadDone(AsyncWebServerRequest *request) {
         const auto deferred = deferResponse(request);
         if (!deferred) { FileUpload::cancel_input(input->id); return; }
         const auto result = FileUpload::when_drained(input->id, input->end,
-            [deferred, json](bool success) {
+            [deferred, json](bool success, const char *error) {
                 if (deferred->cancelled()) return;
+                String body = json;
+                if (!success) {
+                    body = "{\"ok\":false";
+                    jsonAddString(body, "error", error);
+                    body += '}';
+                }
                 deferred->publish(std::unique_ptr<AsyncWebServerResponse>(new(std::nothrow)
                     AsyncBasicResponse(success ? 202 : 409, "application/json",
-                        success ? json : String("{\"ok\":false,\"error\":\"upload_write_failed\"}"))));
+                        body)));
             });
         if (result != FileUpload::Result::Accepted) {
             FileUpload::cancel_input(input->id);

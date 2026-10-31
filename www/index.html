@@ -5583,9 +5583,10 @@ async function uploadFile(file, repository = false, bootloader = false) {
   renderResmedStatus();
   try {
     if (!file.size) throw uiFailure('ota.uploadRejected');
-    for (let offset = 0; offset < file.size; offset += 4096) {
+    let chunkBytes = 4096;
+    for (let offset = 0; offset < file.size;) {
       if (controller.signal.aborted || connection !== resmedConnectionSerial) return;
-      const end = Math.min(offset + 4096, file.size);
+      const end = Math.min(offset + chunkBytes, file.size);
       const query = new URLSearchParams({offset, final:end === file.size ? '1' : '0'});
       if (offset === 0) {
         query.set('size', file.size);
@@ -5612,7 +5613,11 @@ async function uploadFile(file, repository = false, bootloader = false) {
       if (!Number.isInteger(data.upload_id) || data.upload_id <= 0 ||
           (firmwareUploadId !== null && data.upload_id !== firmwareUploadId)) throw uiFailure('ota.uploadRejected');
       firmwareUploadId = data.upload_id;
+      chunkBytes = data.chunk_bytes === undefined ? 4096 : data.chunk_bytes;
+      if (!Number.isInteger(chunkBytes) || chunkBytes < 1 || chunkBytes > 65536)
+        throw uiFailure('ota.uploadRejected');
       firmwareUploadProgress.sent = end;
+      offset = end;
       renderResmedStatus();
     }
     if (lastStatus.file_upload?.id !== firmwareUploadId || lastStatus.file_upload.active)

@@ -17,6 +17,7 @@ from airbridge_flash import emit, finish_status, print_progress, update_status
 
 
 CHUNK_SIZE = 4096
+MAX_CHUNK_SIZE = 64 * 1024
 MAX_FILE_BYTES = 0xffffffff
 
 
@@ -28,13 +29,14 @@ def upload(target, source, destination, overwrite=False, auth=None, timeout=60):
         if size > MAX_FILE_BYTES:
             raise UploadError('file exceeds the FAT32 size limit')
         offset, upload_id = 0, None
+        chunk_size = CHUNK_SIZE
         if size:
             print_progress(target, 0, size, force=True)
         else:
             update_status(target, 'uploading: 0 B', force=True)
         while True:
-            data = stream.read(min(CHUNK_SIZE, size - offset))
-            if len(data) != min(CHUNK_SIZE, size - offset):
+            data = stream.read(min(chunk_size, size - offset))
+            if len(data) != min(chunk_size, size - offset):
                 raise UploadError('source file became shorter during upload')
             end = offset + len(data)
             final = end == size
@@ -64,6 +66,9 @@ def upload(target, source, destination, overwrite=False, auth=None, timeout=60):
                     result.get('complete') is not final):
                 raise UploadError(f'upload confirmation mismatch: {result}')
             upload_id, offset = received_id, end
+            chunk_size = result.get('chunk_bytes', CHUNK_SIZE)
+            if type(chunk_size) is not int or not 1 <= chunk_size <= MAX_CHUNK_SIZE:
+                raise UploadError('invalid upload chunk size from device')
             if size:
                 print_progress(target, offset, size, force=final)
             if final:

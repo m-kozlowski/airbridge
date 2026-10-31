@@ -10,7 +10,9 @@ namespace FileUpload {
 
 constexpr size_t MAX_IMAGE_BYTES = 1024 * 1024;
 constexpr size_t MAX_FILE_BYTES = UINT32_MAX;
-constexpr size_t MAX_CHUNK_BYTES = 4096;
+constexpr size_t INITIAL_CHUNK_BYTES = 4096;
+constexpr size_t MAX_CHUNK_BYTES = 64 * 1024;
+constexpr size_t WRITE_CHUNK_BYTES = 4096;
 enum class Destination : uint8_t { Sd, Staging };
 enum class State : uint8_t { Idle, Receiving, Finalizing, Ready, Failed, Cancelled };
 enum class Result : uint8_t {
@@ -26,6 +28,7 @@ struct Status {
     uint32_t size = 0;
     uint32_t received = 0;
     uint32_t written = 0;
+    uint32_t chunk_bytes = 0;
     bool complete = false;
     bool source_ready = false;
     bool cancel_allowed = false;
@@ -65,14 +68,15 @@ bool cancel(uint32_t id);
 bool cancel_input(uint32_t id);
 void get_status(Status &out);
 bool copy_status(uint32_t id, Status &out);
-// One indexed HTTP chunk in flight, <=MAX_CHUNK_BYTES. Defer its HTTP response
+// One indexed HTTP chunk in flight, <=status.chunk_bytes. Defer its response
 // until this notification says its exclusive byte end has DRAINED. The final
 // chunk waits for publication and release of SD as well. Only then
 // may the client submit the next chunk; no polling or receive-window-sized RAM.
 // Accepted registers exactly one notification (possibly immediate); it runs
 // outside owner locks and may only publish a prepared response or signal work.
+// error is an owner copy valid only during the callback; empty on success.
 // Captures must own/weakly-reference response state, never a request pointer.
-using Drained = std::function<void(bool success)>;
+using Drained = std::function<void(bool success, const char *error)>;
 Result when_drained(uint32_t id, size_t end, Drained notify);
 
 // Staging Ready retains the OtaManager manual-upload reservation and partition

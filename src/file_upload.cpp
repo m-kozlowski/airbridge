@@ -88,7 +88,14 @@ void run_upload() {
     if (destination == Destination::Sd) {
         snprintf(temporary, sizeof(temporary), "/.upload-%lu.part", static_cast<unsigned long>(id));
         snprintf(backup, sizeof(backup), "/.upload-%lu.bak", static_cast<unsigned long>(id));
-        if (!session.begin(SdStorage::Access::Exclusive)) failure = "storage_busy";
+        const uint32_t started = millis();
+        bool admitted = session.begin(SdStorage::Access::Exclusive);
+        while (!admitted && !interrupted() && SdStorage::local_access_allowed() &&
+               uint32_t(millis() - started) < 2000) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            admitted = session.begin(SdStorage::Access::Exclusive);
+        }
+        if (!admitted) failure = "storage_busy";
         else if (!session.ensure_parent(path)) failure = "directory_failed";
         else if (!session.run([&](fs::FS &fs) {
             if (fs.exists(path)) {
@@ -111,7 +118,7 @@ void run_upload() {
         xSemaphoreTake(mutex, portMAX_DELAY);
         if (status.error[0]) { xSemaphoreGive(mutex); break; }
         const size_t offset = consumed % capacity;
-        const size_t size = std::min({produced - consumed, capacity - offset, MAX_CHUNK_BYTES});
+        const size_t size = std::min({produced - consumed, capacity - offset, WRITE_CHUNK_BYTES});
         const bool finished = final_received && !size;
         if (!size && !finished && uint32_t(millis() - last_input) >= INPUT_TIMEOUT_MS)
             reject("upload_timeout");
@@ -147,12 +154,14 @@ void run_upload() {
         status.written = written;
         changed();
         Drained notify;
+        char error[sizeof(status.error)];
+        snprintf(error, sizeof(error), "%s", status.error);
         const bool drained_success = !status.error[0] && status.written >= drain_end;
         if (drain_notify && (status.error[0] ||
             (drained_success && !(final_received && drain_end == status.received))))
             notify.swap(drain_notify);
         xSemaphoreGive(mutex);
-        if (notify) notify(drained_success);
+        if (notify) notify(drained_success, error);
         vTaskDelay(1);
     }
 
@@ -231,7 +240,7 @@ void run_upload() {
         success ? "complete" : cancelled ? "cancelled" : "failed",
         static_cast<unsigned long>(id), destination_name, path, unsigned(written),
         unsigned(received), success ? "" : ": ", error);
-    if (notify) notify(drained_success);
+    if (notify) notify(drained_success, error);
 }
 
 void worker(void *) {
@@ -282,10 +291,10 @@ Result begin_upload(Destination destination, const char *filename, size_t size, 
         xSemaphoreGive(mutex);
         return Result::Busy;
     }
-    capacity = std::min(size ? size : MAX_IMAGE_BYTES, size_t(16 * 1024));
+    capacity = std::min(size ? size : MAX_IMAGE_BYTES, MAX_CHUNK_BYTES);
     ring = static_cast<uint8_t *>(aircannect::Memory::alloc_large(capacity, false));
     if (!ring) {
-        capacity = std::min(capacity, MAX_CHUNK_BYTES);
+        capacity = std::min(capacity, INITIAL_CHUNK_BYTES);
         ring = static_cast<uint8_t *>(aircannect::Memory::alloc_large(capacity, true));
     }
     if (!ring) {
@@ -302,6 +311,7 @@ Result begin_upload(Destination destination, const char *filename, size_t size, 
     status.state = State::Receiving;
     status.cancel_allowed = true;
     status.size = size;
+    status.chunk_bytes = capacity;
     status.bootloader = bootloader;
     status.overwrite = overwrite;
     status.repository = destination == Destination::Sd &&
@@ -346,7 +356,7 @@ Result submit_chunk(uint32_t id, size_t index, const uint8_t *data, size_t lengt
         status.destination == Destination::Sd ? MAX_FILE_BYTES : MAX_IMAGE_BYTES;
     if (!id || status.id != id) result = Result::UnknownId;
     else if (!active || sealed || status.error[0]) result = Result::Closed;
-    else if (final_received || index != status.received || length > MAX_CHUNK_BYTES ||
+    else if (final_received || index != status.received || length > status.chunk_bytes ||
              index > limit || length > limit - index ||
              (length && !data) || (status.size && (index > status.size || length > status.size - index)) ||
              (final && !index && !length && status.destination != Destination::Sd) ||
@@ -417,6 +427,8 @@ Result when_drained(uint32_t id, size_t end, Drained notify) {
     xSemaphoreTake(mutex, portMAX_DELAY);
     Result result = Result::Accepted;
     bool immediate = false, success = false;
+    char error[sizeof(status.error)];
+    snprintf(error, sizeof(error), "%s", status.error);
     if (!id || status.id != id) result = Result::UnknownId;
     else if ((!end && !final_received) || end > status.received || !notify) result = Result::InvalidChunk;
     else if (drain_notify) result = Result::Busy;
@@ -429,7 +441,7 @@ Result when_drained(uint32_t id, size_t end, Drained notify) {
         drain_notify = std::move(notify);
     }
     xSemaphoreGive(mutex);
-    if (immediate) notify(success);
+    if (immediate) notify(success, error);
     return result;
 }
 
