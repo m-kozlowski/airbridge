@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 
 from airbridge_flash import FlashError as UploadError
 from airbridge_flash import auth_header, connection, decode_response, parse_target
+from airbridge_flash import emit, finish_status, print_progress, update_status
 
 
 CHUNK_SIZE = 4096
@@ -27,6 +28,10 @@ def upload(target, source, destination, overwrite=False, auth=None, timeout=60):
         if size > MAX_FILE_BYTES:
             raise UploadError('file exceeds the FAT32 size limit')
         offset, upload_id = 0, None
+        if size:
+            print_progress(target, 0, size, force=True)
+        else:
+            update_status(target, 'uploading: 0 B', force=True)
         while True:
             data = stream.read(min(CHUNK_SIZE, size - offset))
             if len(data) != min(CHUNK_SIZE, size - offset):
@@ -59,6 +64,8 @@ def upload(target, source, destination, overwrite=False, auth=None, timeout=60):
                     result.get('complete') is not final):
                 raise UploadError(f'upload confirmation mismatch: {result}')
             upload_id, offset = received_id, end
+            if size:
+                print_progress(target, offset, size, force=final)
             if final:
                 return size
 
@@ -79,11 +86,13 @@ def main(argv=None):
     try:
         size = upload(parse_target(args.host), args.file, args.path, args.overwrite,
                       None if args.no_auth else auth_header(args.user, args.password), args.timeout)
-        print(f'Uploaded {size} bytes to {args.path}')
+        emit(None, f'Uploaded {size} bytes to {args.path}')
         return 0
     except (UploadError, OSError) as error:
-        print(f'ERROR: {error}', file=sys.stderr)
+        emit(None, f'ERROR: {error}', error=True)
         return 1
+    finally:
+        finish_status()
 
 
 if __name__ == '__main__':
