@@ -16,6 +16,7 @@ namespace ResmedOta {
         bool flash_blx = false;
         // Explicit manual override of CRC/BID/patch warnings, not I/O/bounds.
         bool force_blx = false;
+        bool preserve_settings = true;
     };
 
     struct Status {

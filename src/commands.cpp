@@ -745,8 +745,8 @@ void dispatch_command(const char *line, String &response) {
             response = ResmedOta::confirm_dump(id, &error)
                 ? "OK: confirmed; see FLASH STATUS\n" : "ERR: " + String(error) + "\n";
         } else if (sub.length() == 0) {
-            response = "Usage: FLASH [FULL|CMX|CDX|CCX|BLX] [BLX] [FORCE]\n"
-                       "       FLASH FILE \"/airbridge/resmed-firmware/name.bin\" [block] [BLX] [FORCE]\n"
+            response = "Usage: FLASH [FULL|CMX|CDX|CCX|BLX] [BLX] [FORCE] [NOPRESERVE]\n"
+                       "       FLASH FILE \"/airbridge/resmed-firmware/name.bin\" [block] [BLX] [FORCE] [NOPRESERVE]\n"
                        "       FLASH LIST | REFRESH\n"
                        "       FLASH DUMP\n"
                        "       FLASH CONFIRM <operation> INSTALL_PATCHED_BOOTLOADER\n"
@@ -768,6 +768,7 @@ void dispatch_command(const char *line, String &response) {
                     }
                     strcpy(install.path, path.c_str());
                 } else if (token == "FORCE") install.force_blx = true;
+                else if (token == "NOPRESERVE") install.preserve_settings = false;
                 else if (token == "BLX" && *install.block) install.flash_blx = true;
                 else if (!*install.block && ResmedFirmwareImage::parse_block(token.c_str()) !=
                          ResmedFirmwareImage::Block::Unknown) {
@@ -821,7 +822,7 @@ void dispatch_command(const char *line, String &response) {
                    "  STORAGE FORMAT CONFIRM Erase all SD data, preserve config, restart\n"
                    "  STORAGE REINDEX Rebuild reports after editing catalogued EDF files\n"
                    "  STORAGE USB ON|OFF  Share SD over USB / return after disconnect\n"
-                   "  FLASH [block] [BLX] [FORCE]  Flash uploaded firmware\n"
+                   "  FLASH [block] [BLX] [FORCE] [NOPRESERVE]  Flash uploaded firmware\n"
                    "  FLASH STATUS|CANCEL Monitor/cancel flash or dump\n"
                    "  FLASH LIST [directory] [offset]  Firmware directory page\n"
                    "  FLASH REFRESH       Refresh firmware repository\n"

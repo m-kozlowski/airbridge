@@ -514,6 +514,16 @@ bool run_install() {
     if (!open_input(input) || cancelled() || !prepare(input, plan) || !claim_uart(input, plan)) return false;
     bool success = false;
     do {
+        if (work.request.preserve_settings) {
+            phase("Preserve settings");
+            uint32_t rop = 0;
+            if (cancelled()) break;
+            if (!send_raw_cmd("P S #ROP 0005", nullptr, 0, 1000) ||
+                !raw_hex("G S #ROP", rop) || rop != 5) {
+                fail("preserve_settings_failed");
+                break;
+            }
+        }
         if (!enter_bootloader() || !negotiate_baud()) break;
         bool programmed = true;
         for (size_t i = 0; i < plan.count; ++i) {

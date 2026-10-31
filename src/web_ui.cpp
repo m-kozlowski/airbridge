@@ -2085,6 +2085,7 @@ static void handleFlashStart(AsyncWebServerRequest *request) {
     install.upload_id = doc["upload_id"] | uint32_t(0);
     install.flash_blx = doc["flash_blx"] | false;
     install.force_blx = doc["force_blx"] | false;
+    install.preserve_settings = doc["preserve_settings"] | true;
     const char *error = nullptr;
     const bool accepted = ResmedOta::start_install(install, &error);
     String json = "{";

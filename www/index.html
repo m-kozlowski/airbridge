@@ -867,6 +867,10 @@ a.btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
             <label style="color:var(--red)"><span data-i18n="ota.forceBootloader"></span></label>
             <input type="checkbox" id="forceBlx">
           </div>
+          <div class="row">
+            <label for="flashPreserveSettings" data-i18n="ota.preserveSettings"></label>
+            <input type="checkbox" id="flashPreserveSettings" checked>
+          </div>
           <section id="firmwareRepository" hidden aria-labelledby="firmwareRepositoryTitle">
             <h4 class="firmware-section-title" id="firmwareRepositoryTitle" data-i18n="ota.repository"></h4>
             <div class="firmware-toolbar">
@@ -5491,7 +5495,7 @@ function renderResmedStatus() {
   const source = resmedInstallSource();
   document.getElementById('btnFlash').disabled = !resmedFresh || busy || state.install_allowed !== true ||
     !(source || (fi.files[0] && uploadAllowed));
-  document.querySelectorAll('#flashBlock, #flashBlx, #forceBlx').forEach(el => { el.disabled = !resmedFresh || busy || state.active === true; });
+  document.querySelectorAll('#flashBlock, #flashBlx, #forceBlx, #flashPreserveSettings').forEach(el => { el.disabled = !resmedFresh || busy || state.active === true; });
   document.getElementById('btnFlashCancel').style.display = state.cancel_allowed === true ? '' : 'none';
   document.getElementById('btnFlashCancel').disabled = !resmedFresh || busy;
   uiText(document.getElementById('btnFlash'),
@@ -5653,7 +5657,8 @@ async function startFlash(path = '') {
   const forceBlx = document.getElementById('forceBlx').checked;
   const name = path || (source ? lastStatus.firmware_upload.path || t('ota.stagedSource', {id:source.upload_id}) : file.name);
   if (!confirm(t('ota.confirmInstall', {source:name}))) return;
-  const options = {block:block||undefined, flash_blx:flashBlx, force_blx:forceBlx};
+  const options = {block:block||undefined, flash_blx:flashBlx, force_blx:forceBlx,
+    preserve_settings:document.getElementById('flashPreserveSettings').checked};
   if (source) return resmedCommand({...source, ...options});
 
   // A click authorizes this upload only. SSE readiness, not the last HTTP ACK,
