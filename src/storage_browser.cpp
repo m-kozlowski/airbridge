@@ -56,21 +56,8 @@ const char *kind_name(Kind kind) {
     return "unknown";
 }
 
-bool valid_path(const char *path) {
-    if (!path || path[0] != '/') return false;
-    if (!path[1]) return true;
-    const char *segment = path + 1;
-    for (const char *p = segment;; p++) {
-        if (*p && (uint8_t(*p) < 32 || *p == '\\' || *p == 127)) return false;
-        if (!*p || *p == '/') {
-            const size_t size = p - segment;
-            if (!size || (size == 1 && segment[0] == '.') ||
-                (size == 2 && segment[0] == '.' && segment[1] == '.')) return false;
-            if (!*p) return true;
-            segment = p + 1;
-        }
-    }
-}
+using SdStorage::valid_path;
+using SdStorage::valid_write_path;
 
 bool child_path(const char *parent, const char *name, size_t length, char (&out)[256]) {
     if (!length || memchr(name, '/', length) || memchr(name, '\n', length)) return false;
@@ -90,12 +77,8 @@ bool rename_target(const Request &request, char (&out)[256]) {
     const int written = name[0] == '/'
         ? snprintf(out, sizeof(out), "%s", name)
         : snprintf(out, sizeof(out), "%s%s%s", parent, strcmp(parent, "/") ? "/" : "", name);
-    if (written <= 0 || size_t(written) >= sizeof(out) || !valid_path(out) || !out[1])
+    if (written <= 0 || size_t(written) >= sizeof(out) || !valid_write_path(out))
         return false;
-    for (const char *p = out + 1; *p; ++p) {
-        if (strchr("\\:*?\"<>|", *p)) return false;
-        if ((!p[1] || p[1] == '/') && (*p == '.' || *p == ' ')) return false;
-    }
     // FAT paths are case-insensitive: moving a directory into itself is invalid.
     const size_t source_length = strlen(request.path);
     return strncasecmp(out, request.path, source_length) ||

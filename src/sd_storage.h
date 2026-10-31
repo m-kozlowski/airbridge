@@ -88,6 +88,8 @@ inline void put_le32(uint8_t *data, uint32_t value) {
 }
 
 bool write_exact(fs::File &file, const uint8_t *data, size_t size);
+bool valid_path(const char *path);
+bool valid_write_path(const char *path);
 
 // Boot coordinator only, before init or any worker/network/recorder starts.
 // Replaces the card partition table and creates one empty FAT32 partition.
@@ -211,6 +213,12 @@ public:
     // One directory per executor step. Existing parents must be directories.
     // Failure may leave empty parents; each creation publishes a file revision.
     bool ensure_parent(const char *path) const;
+
+    // Publish a finished temporary file. Overwrite retains the old file at
+    // backup until rename succeeds, and restores it on a failed rename.
+    // FAT is not power-loss atomic; interrupted replacement may leave backup.
+    const char *publish_file(const char *temporary, const char *path,
+                             bool overwrite, const char *backup) const;
 
 private:
     uint32_t generation_ = 0;

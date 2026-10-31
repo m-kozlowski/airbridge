@@ -10,7 +10,7 @@
 #include "wifi_setup.h"
 #include "app_config.h"
 #include "resmed_firmware_repository.h"
-#include "resmed_firmware_upload.h"
+#include "file_upload.h"
 #include "resmed_ota.h"
 #include <string.h>
 
@@ -40,7 +40,7 @@ struct Snapshot {
     uint32_t clinical_revision = 0;
     SdStorage::Status storage = {};
     ResmedFirmwareRepository::Status firmware_repository = {};
-    ResmedFirmwareUpload::Status firmware_upload = {};
+    FileUpload::Status file_upload = {};
     ResmedOta::Status resmed = {};
 };
 
@@ -72,7 +72,7 @@ inline Snapshot snapshot() {
     out.clinical_revision = ClinicalJobs::revision();
     SdStorage::get_status(out.storage);
     ResmedFirmwareRepository::get_status(out.firmware_repository);
-    ResmedFirmwareUpload::get_status(out.firmware_upload);
+    FileUpload::get_status(out.file_upload);
     ResmedOta::get_status(out.resmed);
     return out;
 }

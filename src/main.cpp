@@ -11,7 +11,7 @@
 #include "oxi_arbiter.h"
 #include "airbridge_ota.h"
 #include "resmed_firmware_repository.h"
-#include "resmed_firmware_upload.h"
+#include "file_upload.h"
 #include "resmed_ota.h"
 #include "factory_reset.h"
 #include "tls_memory.h"
@@ -174,7 +174,7 @@ void setup() {
 
     SdStorage::init();
     ResmedFirmwareRepository::init();
-    ResmedFirmwareUpload::init();
+    FileUpload::init();
     CustomSettings::init();
     LiveStream::init();
     LiveTce::register_parser();

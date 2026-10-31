@@ -8,7 +8,7 @@
 #include "memory_manager.h"
 #include "qframe.h"
 #include "resmed_firmware_repository.h"
-#include "resmed_firmware_upload.h"
+#include "file_upload.h"
 #include "sd_storage.h"
 #include "uart_arbiter.h"
 #include "board.h"
@@ -49,7 +49,7 @@ struct Work {
     char expected_serial[24] = {};
     InstallRequest request;
     Source source = Source::None;
-    ResmedFirmwareUpload::Source staged;
+    FileUpload::Source staged;
 };
 Work work;
 
@@ -877,7 +877,7 @@ void flash_task(void *) {
         work.dump ? "dump" : "install", static_cast<unsigned long>(status.id), status.source_path);
     bool success = work.dump ? run_dump() : run_install();  // Owners unwind here.
     if (!restore_uart()) success = false;
-    if (work.staged.token) ResmedFirmwareUpload::release_source(work.staged.token);
+    if (work.staged.token) FileUpload::release_source(work.staged.token);
     finish(success);
     get_status(status);
     Log::logf(CAT_OTA, status.error[0] ? LOG_ERROR : LOG_INFO, "ResMed %s %s id=%lu bytes=%u: %s\n",
@@ -919,7 +919,7 @@ bool launch(const Work &next, const char **error, uint32_t resumed_id = 0) {
     if (xTaskCreatePinnedToCore(flash_task, "resmed_ota", FLASH_TASK_STACK,
                                 nullptr, 3, nullptr, 1) != pdPASS) {
         fail("worker_create_failed");
-        if (next.staged.token) ResmedFirmwareUpload::release_source(next.staged.token);
+        if (next.staged.token) FileUpload::release_source(next.staged.token);
         finish(false);
         OtaManager::end_resmed_flash();
         if (error) *error = "worker_create_failed";
@@ -948,12 +948,12 @@ bool start_install(const InstallRequest &request, const char **error) {
     next.source = Source::Repository;
     bool claimed = false;
     if (request.upload_id) {
-        ResmedFirmwareUpload::Status upload;
-        if (!ResmedFirmwareUpload::copy_status(request.upload_id, upload) ||
-            upload.state != ResmedFirmwareUpload::State::Ready || !upload.source_ready)
+        FileUpload::Status upload;
+        if (!FileUpload::copy_status(request.upload_id, upload) ||
+            upload.state != FileUpload::State::Ready || !upload.source_ready)
             return reject("upload_not_ready");
-        if (upload.destination == ResmedFirmwareUpload::Destination::Staging) {
-            if (!ResmedFirmwareUpload::claim_source(request.upload_id, next.staged, error)) return false;
+        if (upload.destination == FileUpload::Destination::Staging) {
+            if (!FileUpload::claim_source(request.upload_id, next.staged, error)) return false;
             next.source = Source::Staging;
             claimed = true;
         } else {
@@ -1023,10 +1023,10 @@ bool is_active() { return active.load(); }
 
 void poll() {
     // Admission facts are cached-owner reads, never UART or filesystem work.
-    ResmedFirmwareUpload::Status upload;
-    ResmedFirmwareUpload::get_status(upload);
-    const bool staged = upload.state == ResmedFirmwareUpload::State::Ready &&
-        upload.destination == ResmedFirmwareUpload::Destination::Staging && upload.source_ready;
+    FileUpload::Status upload;
+    FileUpload::get_status(upload);
+    const bool staged = upload.state == FileUpload::State::Ready &&
+        upload.destination == FileUpload::Destination::Staging && upload.source_ready;
     const char *blocked = OtaManager::resmed_flash_blocked(staged);
     const char *dump_blocked = "sd_unsupported";
 #if AB_STORAGE_HAS_SDCARD

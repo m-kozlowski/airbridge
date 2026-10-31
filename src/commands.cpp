@@ -5,7 +5,7 @@
 #include "tcp_bridge.h"
 #include "resmed_ota.h"
 #include "resmed_firmware_repository.h"
-#include "resmed_firmware_upload.h"
+#include "file_upload.h"
 #include "string_util.h"
 #include "debug_log.h"
 #include "app_config.h"
@@ -687,13 +687,13 @@ void dispatch_command(const char *line, String &response) {
             if (*flash.error) response += "error: " + String(flash.error) + "\n";
             if (flash.confirmation_required)
                 response += "confirmation required: " + String(flash.recovery_path) + "\n";
-            response += "upload: " + String(status.firmware_upload.id) + " " +
-                String(status.firmware_upload.written) + " bytes\n";
+            response += "upload: " + String(status.file_upload.id) + " " +
+                String(status.file_upload.written) + " bytes\n";
         } else if (sub == "CANCEL") {
             ResmedOta::cancel();
-            ResmedFirmwareUpload::Status upload;
-            ResmedFirmwareUpload::get_status(upload);
-            ResmedFirmwareUpload::cancel(upload.id);
+            FileUpload::Status upload;
+            FileUpload::get_status(upload);
+            FileUpload::cancel(upload.id);
             response = "OK: cancellation requested; see FLASH STATUS\n";
         } else if (sub == "LIST" || sub.startsWith("LIST ")) {
             int position = 10;
@@ -779,8 +779,8 @@ void dispatch_command(const char *line, String &response) {
                 }
             }
             if (!*install.path) {
-                ResmedFirmwareUpload::Status upload;
-                ResmedFirmwareUpload::get_status(upload);
+                FileUpload::Status upload;
+                FileUpload::get_status(upload);
                 install.upload_id = upload.id;
             }
             const char *error = nullptr;

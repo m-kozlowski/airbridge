@@ -7,7 +7,7 @@
 #include "oxi_arbiter.h"
 #include "resmed_ota.h"
 #include "resmed_firmware_repository.h"
-#include "resmed_firmware_upload.h"
+#include "file_upload.h"
 #include "debug_log.h"
 #include "crash_diagnostics.h"
 #include "app_config.h"
@@ -373,14 +373,15 @@ static void appendFirmwareImage(Output &json, const ResmedFirmwareImage::Result 
 }
 
 template<class Output>
-static void appendFirmwareUpload(Output &json, const ResmedFirmwareUpload::Status &status) {
-    using State = ResmedFirmwareUpload::State;
+static void appendFirmwareUpload(Output &json, const FileUpload::Status &status) {
+    using State = FileUpload::State;
     jsonAddUInt32(json, "revision", status.revision, false);
     jsonAddUInt32(json, "id", status.id);
     jsonAddBool(json, "active", status.state == State::Receiving || status.state == State::Finalizing);
     jsonAddBool(json, "ready", status.source_ready);
     jsonAddBool(json, "cancel_allowed", status.cancel_allowed);
-    jsonAddBool(json, "repository", status.destination == ResmedFirmwareUpload::Destination::Repository);
+    jsonAddBool(json, "sd", status.destination == FileUpload::Destination::Sd);
+    jsonAddBool(json, "repository", status.repository);
     jsonAddUInt32(json, "size", status.size);
     jsonAddUInt32(json, "received", status.received);
     jsonAddUInt32(json, "written", status.written);
@@ -539,8 +540,8 @@ static void appendStatusFields(Output &json, const DeviceStatus::Snapshot &statu
         jsonAddUInt32(json, "firmware_repository_revision", status.firmware_repository.revision);
         jsonAddBool(json, "firmware_repository_supported", status.firmware_repository.supported);
         jsonAddBool(json, "firmware_repository_available", status.firmware_repository.available);
-        jsonAppend(json, ",\"firmware_upload\":{");
-        appendFirmwareUpload(json, status.firmware_upload);
+        jsonAppend(json, ",\"file_upload\":{");
+        appendFirmwareUpload(json, status.file_upload);
         jsonAppend(json, "}");
         jsonAppend(json, ",\"resmed\":{");
         appendResmedOperation(json, status.resmed);
@@ -1543,11 +1544,22 @@ struct FirmwareUploadRequest {
 static std::shared_ptr<aircannect::AsyncDeferredResponse::State>
 deferResponse(AsyncWebServerRequest *request);
 
+static FileUpload::Result beginFileUpload(AsyncWebServerRequest *request,
+                                         const char *name, size_t size, uint32_t &id) {
+    if (request->hasParam("repository")) return FileUpload::Result::Unsupported;
+    const bool sd = request->hasParam("path");
+    const bool bootloader = request->hasParam("bootloader") && request->getParam("bootloader")->value() == "1";
+    const String overwrite = request->hasParam("overwrite") ? request->getParam("overwrite")->value() : "0";
+    if (overwrite != "0" && overwrite != "1") return FileUpload::Result::InvalidChunk;
+    return FileUpload::begin_upload(sd ? FileUpload::Destination::Sd : FileUpload::Destination::Staging,
+        sd ? request->getParam("path")->value().c_str() : name, size, id, bootloader, overwrite == "1");
+}
+
 static void handleFirmwareBody(AsyncWebServerRequest *request, uint8_t *data,
                                size_t len, size_t index, size_t total) {
     if (request->getResponse() || !checkAuth(request)) return;
-    if (!total || total > ResmedFirmwareUpload::MAX_CHUNK_BYTES || index > total ||
-        !len || len > total - index || !request->hasParam("offset") ||
+    if (total > FileUpload::MAX_CHUNK_BYTES || index > total ||
+        (!len && total) || len > total - index || !request->hasParam("offset") ||
         !request->hasParam("final")) {
         request->send(400, "application/json", "{\"error\":\"invalid_chunk\"}");
         return;
@@ -1557,15 +1569,19 @@ static void handleFirmwareBody(AsyncWebServerRequest *request, uint8_t *data,
         uint32_t offset = 0, id = 0, size = 0;
         const String last = request->getParam("final")->value();
         if (!aircannect::parse_uint32_decimal(request->getParam("offset")->value().c_str(), offset) ||
-            offset > ResmedFirmwareUpload::MAX_IMAGE_BYTES - total ||
+            offset > FileUpload::MAX_FILE_BYTES - total ||
             (last != "0" && last != "1") ||
+            (!total && (last != "1" || request->hasParam("id"))) ||
             (request->hasParam("id") && !aircannect::parse_uint32_decimal(
                 request->getParam("id")->value().c_str(), id))) {
             request->send(400, "application/json", "{\"error\":\"invalid_chunk\"}");
             return;
         }
-        if (!id && (offset || !request->hasParam("name") || !request->hasParam("size") ||
-            !aircannect::parse_uint32_decimal(request->getParam("size")->value().c_str(), size) || !size)) {
+        if (!id && (offset || (!request->hasParam("name") && !request->hasParam("path")) ||
+            !request->hasParam("size") ||
+            !aircannect::parse_uint32_decimal(request->getParam("size")->value().c_str(), size) ||
+            (!total && size) ||
+            (!size && (!request->hasParam("path") || total || last != "1")))) {
             request->send(400, "application/json", "{\"error\":\"invalid_source\"}");
             return;
         }
@@ -1581,14 +1597,12 @@ static void handleFirmwareBody(AsyncWebServerRequest *request, uint8_t *data,
         input->base = offset;
         input->end = offset + total;
         if (!id) {
-            const bool repository = request->hasParam("repository") && request->getParam("repository")->value() == "1";
-            const bool bootloader = request->hasParam("bootloader") && request->getParam("bootloader")->value() == "1";
-            const auto result = ResmedFirmwareUpload::begin_upload(
-                repository ? ResmedFirmwareUpload::Destination::Repository : ResmedFirmwareUpload::Destination::Staging,
-                request->getParam("name")->value().c_str(), size, input->id, bootloader);
-            if (result != ResmedFirmwareUpload::Result::Accepted) {
+            const auto result = beginFileUpload(request,
+                request->hasParam("name") ? request->getParam("name")->value().c_str() : "",
+                size, input->id);
+            if (result != FileUpload::Result::Accepted) {
                 String json = "{\"ok\":false";
-                jsonAddString(json, "error", ResmedFirmwareUpload::result_name(result));
+                jsonAddString(json, "error", FileUpload::result_name(result));
                 json += '}';
                 request->send(409, "application/json", json);
                 return;
@@ -1599,21 +1613,21 @@ static void handleFirmwareBody(AsyncWebServerRequest *request, uint8_t *data,
             if (!pending) return;
             const auto *response = request->getResponse();
             if (!pending->final || (!pending->last && (!response || !response->_finished())))
-                ResmedFirmwareUpload::cancel_input(pending->id);
+                FileUpload::cancel_input(pending->id);
         });
     }
     if (!input || !input->chunked || input->received != index || input->end != input->base + total) {
-        if (input) ResmedFirmwareUpload::cancel_input(input->id);
+        if (input) FileUpload::cancel_input(input->id);
         request->send(400, "application/json", "{\"error\":\"invalid_chunk\"}");
         return;
     }
     const bool complete = index + len == total;
-    const auto result = ResmedFirmwareUpload::submit_chunk(input->id, input->base + index,
+    const auto result = FileUpload::submit_chunk(input->id, input->base + index,
         data, len, input->last && complete);
-    if (result != ResmedFirmwareUpload::Result::Accepted) {
-        ResmedFirmwareUpload::cancel_input(input->id);
+    if (result != FileUpload::Result::Accepted) {
+        FileUpload::cancel_input(input->id);
         String json = "{\"ok\":false";
-        jsonAddString(json, "error", ResmedFirmwareUpload::result_name(result));
+        jsonAddString(json, "error", FileUpload::result_name(result));
         json += '}';
         request->send(409, "application/json", json);
         return;
@@ -1628,7 +1642,7 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
     auto *input = static_cast<FirmwareUploadRequest *>(request->_tempObject);
     if (index == 0) {
         if (input) {
-            ResmedFirmwareUpload::cancel(input->id);
+            FileUpload::cancel(input->id);
             request->send(400, "application/json", "{\"error\":\"one_file_required\"}");
             return;
         }
@@ -1644,30 +1658,25 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
             return;
         }
         request->_tempObject = input;
-        const bool repository = request->hasParam("repository") &&
-            request->getParam("repository")->value() == "1";
-        const auto result = ResmedFirmwareUpload::begin_upload(
-            repository ? ResmedFirmwareUpload::Destination::Repository :
-                         ResmedFirmwareUpload::Destination::Staging,
-            filename.c_str(), size, input->id);
-        if (result != ResmedFirmwareUpload::Result::Accepted) {
+        const auto result = beginFileUpload(request, filename.c_str(), size, input->id);
+        if (result != FileUpload::Result::Accepted) {
             String json = "{\"ok\":false";
-            jsonAddString(json, "error", ResmedFirmwareUpload::result_name(result));
+            jsonAddString(json, "error", FileUpload::result_name(result));
             json += '}';
             request->send(409, "application/json", json);
             return;
         }
         request->onDisconnect([request]() {
             auto *pending = static_cast<FirmwareUploadRequest *>(request->_tempObject);
-            if (pending && !pending->final) ResmedFirmwareUpload::cancel(pending->id);
+            if (pending && !pending->final) FileUpload::cancel(pending->id);
         });
     }
     if (!input || !input->id) return;
-    const auto result = ResmedFirmwareUpload::submit_chunk(input->id, index, data, len, final);
-    if (result != ResmedFirmwareUpload::Result::Accepted) {
-        ResmedFirmwareUpload::cancel(input->id);
+    const auto result = FileUpload::submit_chunk(input->id, index, data, len, final);
+    if (result != FileUpload::Result::Accepted) {
+        FileUpload::cancel(input->id);
         String json = "{\"ok\":false";
-        jsonAddString(json, "error", ResmedFirmwareUpload::result_name(result));
+        jsonAddString(json, "error", FileUpload::result_name(result));
         json += '}';
         request->send(409, "application/json", json);
         return;
@@ -1677,6 +1686,11 @@ static void handleUploadChunk(AsyncWebServerRequest *request, const String& file
 
 static void handleUploadDone(AsyncWebServerRequest *request) {
     if (request->getResponse() || !checkAuth(request)) return;
+    if (!request->_tempObject && request->hasParam("path") && request->hasParam("size") &&
+        request->getParam("size")->value() == "0") {
+        handleFirmwareBody(request, nullptr, 0, 0, 0);
+        if (request->getResponse()) return;
+    }
     const auto *input = static_cast<FirmwareUploadRequest *>(request->_tempObject);
     if (!input || !input->id || !input->final) {
         request->send(400, "application/json", "{\"error\":\"upload_incomplete\"}");
@@ -1684,19 +1698,23 @@ static void handleUploadDone(AsyncWebServerRequest *request) {
     }
     String json = "{\"ok\":true";
     jsonAddInt(json, "upload_id", input->id);
+    if (input->chunked) {
+        jsonAddInt(json, "written", input->end);
+        json += input->last ? ",\"complete\":true" : ",\"complete\":false";
+    }
     json += '}';
     if (input->chunked) {
         const auto deferred = deferResponse(request);
-        if (!deferred) { ResmedFirmwareUpload::cancel_input(input->id); return; }
-        const auto result = ResmedFirmwareUpload::when_drained(input->id, input->end,
+        if (!deferred) { FileUpload::cancel_input(input->id); return; }
+        const auto result = FileUpload::when_drained(input->id, input->end,
             [deferred, json](bool success) {
                 if (deferred->cancelled()) return;
                 deferred->publish(std::unique_ptr<AsyncWebServerResponse>(new(std::nothrow)
                     AsyncBasicResponse(success ? 202 : 409, "application/json",
                         success ? json : String("{\"ok\":false,\"error\":\"upload_write_failed\"}"))));
             });
-        if (result != ResmedFirmwareUpload::Result::Accepted) {
-            ResmedFirmwareUpload::cancel_input(input->id);
+        if (result != FileUpload::Result::Accepted) {
+            FileUpload::cancel_input(input->id);
             deferred->publish(std::unique_ptr<AsyncWebServerResponse>(new(std::nothrow)
                 AsyncBasicResponse(409, "application/json", "{\"error\":\"upload_not_owned\"}")));
         }
@@ -2127,9 +2145,9 @@ static void handleFirmwareRepositoryRefresh(AsyncWebServerRequest *request) {
 static void handleFlashCancel(AsyncWebServerRequest *request) {
     if (!checkAuth(request)) return;
     ResmedOta::cancel();
-    ResmedFirmwareUpload::Status upload;
-    ResmedFirmwareUpload::get_status(upload);
-    ResmedFirmwareUpload::cancel(upload.id);
+    FileUpload::Status upload;
+    FileUpload::get_status(upload);
+    FileUpload::cancel(upload.id);
     request->send(200, "application/json", "{\"ok\":true}");
 }
 
@@ -2844,7 +2862,7 @@ static uint16_t statusChanges(const DeviceStatus::Snapshot &a,
         fields |= STATUS_REPORT;
     if (a.clinical_revision != b.clinical_revision) fields |= STATUS_CLINICAL;
     if (a.firmware_repository.revision != b.firmware_repository.revision ||
-        a.firmware_upload.revision != b.firmware_upload.revision ||
+        a.file_upload.revision != b.file_upload.revision ||
         a.resmed.revision != b.resmed.revision)
         fields |= STATUS_FIRMWARE;
     // AirCANnect first-error semantics: the owner retains one immutable fault

@@ -1696,7 +1696,7 @@ function renderStatus(d) {
   }
   if (d.ui_language !== undefined) applyUiLanguage(d.ui_language);
   if (d.ui_theme !== undefined) applyUiTheme(d.ui_theme);
-  if (d.resmed !== undefined || d.firmware_upload !== undefined || d.firmware_repository_revision !== undefined) applyResmedStatus(d);
+  if (d.resmed !== undefined || d.file_upload !== undefined || d.firmware_repository_revision !== undefined) applyResmedStatus(d);
   if (d.report_source !== undefined || d.report_revision !== undefined || d.report_data_revision !== undefined || d.report_state !== undefined || d.report_error !== undefined || d.report_available !== undefined) applyReportStatus(d);
   if (d.system !== undefined || d.rop !== undefined) renderReportAvailability();
   if (d.sd !== undefined) {
@@ -5231,11 +5231,12 @@ function appendFirmwareMessages(messages) {
 function appendFirmwareProgress(data) {
   // The first snapshot is a baseline, not a replay of an earlier operation.
   if (!resmedFresh || resmedAuthFailed) return;
-  for (const key of ['firmware_upload', 'resmed']) {
+  for (const key of ['file_upload', 'resmed']) {
     const state = data[key], previous = lastStatus[key];
     if (!state?.id || !previous) continue;
     const old = state.id === previous.id ? previous : {};
-    const upload = key === 'firmware_upload', path = upload ? 'path' : 'source_path';
+    const upload = key === 'file_upload', path = upload ? 'path' : 'source_path';
+    if (upload && state.sd && !state.repository) continue;
     const messages = [];
     if (state[path] && state[path] !== old[path]) messages.push(state[path]);
     if (upload && state.detected_block && state.detected_block !== old.detected_block)
@@ -5270,7 +5271,7 @@ function resmedDisconnected(reconnect = false) {
     firmwareUploadId = null;
     firmwareUploadProgress = {sent:0,total:0,failed:false};
     delete lastStatus.resmed;
-    delete lastStatus.firmware_upload;
+    delete lastStatus.file_upload;
     delete lastStatus.firmware_repository_revision;
     renderFirmwareRepository();
   }
@@ -5280,7 +5281,7 @@ function resmedDisconnected(reconnect = false) {
 function applyResmedStatus(data) {
   if (resmedAuthFailed) return;
   if (data.resmed !== undefined) resmedFresh = true;
-  if (data.firmware_upload?.active) firmwareProgressKind = 'upload';
+  if (data.file_upload?.active && (!data.file_upload.sd || data.file_upload.repository)) firmwareProgressKind = 'upload';
   if (data.resmed?.active) firmwareProgressKind = 'operation';
   if (data.firmware_repository_revision !== undefined && data.firmware_repository_revision !== firmwareRepositoryRevision) {
     firmwareRepositoryRevision = data.firmware_repository_revision;
@@ -5437,16 +5438,19 @@ async function refreshFirmwareRepository() {
 }
 
 function resmedInstallSource() {
-  const upload = lastStatus.firmware_upload;
-  if (upload?.ready === true && upload.repository === false &&
+  const upload = lastStatus.file_upload;
+  if (upload?.ready === true && upload.sd !== true && upload.repository === false &&
       (firmwareUploadId === null || upload.id === firmwareUploadId)) return {upload_id:upload.id};
   return null;
 }
 
 function renderResmedStatus() {
-  const state = lastStatus.resmed || {}, upload = lastStatus.firmware_upload;
+  const state = lastStatus.resmed || {};
+  const otherUpload = lastStatus.file_upload?.sd && !lastStatus.file_upload.repository;
+  const upload = otherUpload ? null : lastStatus.file_upload;
   const repository = firmwareRepository;
-  const busy = !!storageMutation || resmedRequest || firmwareUploadRequest || !!firmwareInstallIntent;
+  const busy = !!storageMutation || resmedRequest || firmwareUploadRequest || !!firmwareInstallIntent ||
+    (otherUpload && lastStatus.file_upload.active);
   const repositoryReady = resmedFresh && repository?.ready && !firmwareRepositoryDirty && !firmwareRepositoryRead && !firmwareRepositoryError;
   document.getElementById('firmwareRepository').hidden = repository?.supported === false;
   uiText(document.getElementById('firmwareRepositoryPath'), firmwareDirectory || repository?.root || '');
@@ -5585,10 +5589,9 @@ async function uploadFile(file, repository = false, bootloader = false) {
       const query = new URLSearchParams({offset, final:end === file.size ? '1' : '0'});
       if (offset === 0) {
         query.set('size', file.size);
-        const directory = repository && !bootloader && firmwareDirectory
-          ? firmwareDirectory.slice(firmwareRepository.root.length + 1) : '';
-        query.set('name', directory ? directory + '/' + file.name : file.name);
-        if (repository) query.set('repository', '1');
+        if (repository) query.set('path',
+          (bootloader ? firmwareRepository.root : firmwareDirectory || firmwareRepository.root) + '/' + file.name);
+        else query.set('name', file.name);
         if (bootloader) query.set('bootloader', '1');
       } else query.set('id', firmwareUploadId);
 
@@ -5612,7 +5615,7 @@ async function uploadFile(file, repository = false, bootloader = false) {
       firmwareUploadProgress.sent = end;
       renderResmedStatus();
     }
-    if (lastStatus.firmware_upload?.id !== firmwareUploadId || lastStatus.firmware_upload.active)
+    if (lastStatus.file_upload?.id !== firmwareUploadId || lastStatus.file_upload.active)
       appendFirmwareMessages([uiMessage('ota.uploadSaving')]);
     return firmwareUploadId;
   } catch(error) {
@@ -5655,7 +5658,7 @@ async function startFlash(path = '') {
   const block = document.getElementById('flashBlock').value;
   const flashBlx = document.getElementById('flashBlx').checked;
   const forceBlx = document.getElementById('forceBlx').checked;
-  const name = path || (source ? lastStatus.firmware_upload.path || t('ota.stagedSource', {id:source.upload_id}) : file.name);
+  const name = path || (source ? lastStatus.file_upload.path || t('ota.stagedSource', {id:source.upload_id}) : file.name);
   if (!confirm(t('ota.confirmInstall', {source:name}))) return;
   const options = {block:block||undefined, flash_blx:flashBlx, force_blx:forceBlx,
     preserve_settings:document.getElementById('flashPreserveSettings').checked};
@@ -5673,7 +5676,7 @@ async function startFlash(path = '') {
 }
 
 function continueFirmwareInstall() {
-  const intent = firmwareInstallIntent, upload = lastStatus.firmware_upload;
+  const intent = firmwareInstallIntent, upload = lastStatus.file_upload;
   if (!intent?.upload_id || !resmedFresh || firmwareUploadRequest || resmedRequest) return;
   if (upload?.id > intent.upload_id) {
     firmwareInstallIntent = null;
@@ -5722,7 +5725,7 @@ function confirmFirmwareDump() {
 function cancelFlash() {
   if (!resmedFresh || resmedRequest) return;
   firmwareInstallIntent = null;
-  if (lastStatus.firmware_upload?.cancel_allowed === true) {
+  if (lastStatus.file_upload?.cancel_allowed === true) {
     firmwareUploadAbort?.abort();
     return resmedCommand({}, true);
   }

@@ -1457,6 +1457,63 @@ bool Session::mutate(const char *path, const char *destination,
 #endif
 }
 
+bool valid_path(const char *path) {
+    if (!path || path[0] != '/' || strlen(path) >= 256) return false;
+    if (!path[1]) return true;
+    const char *segment = path + 1;
+    for (const char *p = segment;; p++) {
+        if (*p && (uint8_t(*p) < 32 || *p == '\\' || *p == 127)) return false;
+        if (!*p || *p == '/') {
+            const size_t size = p - segment;
+            if (!size || (size == 1 && segment[0] == '.') ||
+                (size == 2 && segment[0] == '.' && segment[1] == '.')) return false;
+            if (!*p) return true;
+            segment = p + 1;
+        }
+    }
+}
+
+bool valid_write_path(const char *path) {
+    if (!valid_path(path) || !path[1]) return false;
+    for (const char *p = path + 1; *p; ++p) {
+        if (strchr("\\:*?\"<>|", *p)) return false;
+        if ((!p[1] || p[1] == '/') && (*p == '.' || *p == ' ')) return false;
+    }
+    return true;
+}
+
+const char *Session::publish_file(const char *temporary, const char *path,
+                                  bool overwrite, const char *backup) const {
+#if AB_STORAGE_HAS_SDCARD
+    const char *error = "publish_failed";
+    const bool published = mutate(temporary, path, [&](fs::FS &fs) {
+        const bool exists = fs.exists(path);
+        if (exists) {
+            fs::File file = fs.open(path);
+            if (!file || file.isDirectory()) { error = "destination_not_file"; return false; }
+            file.close();
+            if (!overwrite) { error = "file_exists"; return false; }
+            if (fs.exists(backup)) { error = "backup_exists"; return false; }
+            if (!fs.rename(path, backup)) return false;
+        }
+        if (!fs.rename(temporary, path)) {
+            if (exists && !fs.rename(backup, path)) {
+                error = "replace_restore_failed";
+                notify_files_changed(path);
+            }
+            return false;
+        }
+        if (exists) fs.remove(backup);
+        notify_files_changed(path);
+        return true;
+    });
+    return published ? nullptr : error;
+#else
+    (void)temporary; (void)path; (void)overwrite; (void)backup;
+    return "unsupported";
+#endif
+}
+
 bool Session::ensure_parent(const char *path) const {
 #if AB_STORAGE_HAS_SDCARD
     char parent[256];

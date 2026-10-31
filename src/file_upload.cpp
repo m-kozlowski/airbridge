@@ -1,10 +1,11 @@
-#include "resmed_firmware_upload.h"
+#include "file_upload.h"
 #include "resmed_firmware_repository.h"
 #include "airbridge_ota.h"
 #include "resmed_ota.h"
 #include "memory_manager.h"
 #include "debug_log.h"
 #include "board.h"
+#include "sd_storage.h"
 
 #include <Arduino.h>
 #include <algorithm>
@@ -18,10 +19,9 @@
 #include <utility>
 #if AB_STORAGE_HAS_SDCARD
 #include <FS.h>
-#include "sd_storage.h"
 #endif
 
-namespace ResmedFirmwareUpload {
+namespace FileUpload {
 namespace {
 SemaphoreHandle_t mutex = nullptr;
 TaskHandle_t task = nullptr;
@@ -55,12 +55,6 @@ bool file_read(void *context, uint64_t offset, uint8_t *out, size_t size) {
     return !interrupted() && static_cast<SdStorage::Reader *>(context)->read_at(offset, out, size);
 }
 
-bool publish_file(SdStorage::Session &session, const char *part, const char *path) {
-    return session.mutate(part, path, [&](fs::FS &fs) {
-        return !fs.exists(path) && fs.rename(part, path);
-    });
-}
-
 #endif
 
 void run_upload() {
@@ -68,15 +62,16 @@ void run_upload() {
     const Destination destination = status.destination;
 #if AB_STORAGE_HAS_SDCARD
     const bool explicit_bootloader = status.bootloader;
+    const bool overwrite = status.overwrite;
 #endif
     const uint32_t id = status.id;
     const uint32_t expected_size = status.size;
     char path[256];
     snprintf(path, sizeof(path), "%s", status.path);
     xSemaphoreGive(mutex);
-    const char *destination_name = destination == Destination::Repository ? "repository" : "staging";
+    const char *destination_name = destination == Destination::Sd ? "sd" : "staging";
     Log::logf(CAT_OTA, LOG_INFO,
-        "ResMed upload started id=%lu dest=%s path=%s bytes=%u\n",
+        "File upload started id=%lu dest=%s path=%s bytes=%u\n",
         static_cast<unsigned long>(id), destination_name, path, unsigned(expected_size));
     const char *failure = nullptr;
     uint32_t written = 0;
@@ -88,19 +83,24 @@ void run_upload() {
     SdStorage::Writer output;
     SdStorage::Reader input;
     char temporary[256] = {};
+    char backup[64] = {};
     bool private_created = false;
-    if (destination == Destination::Repository) {
-        snprintf(temporary, sizeof(temporary), "%s/.upload-%lu.part",
-                 ResmedFirmwareRepository::ROOT, static_cast<unsigned long>(id));
-        if (!session.begin()) failure = "storage_busy";
+    if (destination == Destination::Sd) {
+        snprintf(temporary, sizeof(temporary), "/.upload-%lu.part", static_cast<unsigned long>(id));
+        snprintf(backup, sizeof(backup), "/.upload-%lu.bak", static_cast<unsigned long>(id));
+        if (!session.begin(SdStorage::Access::Exclusive)) failure = "storage_busy";
         else if (!session.ensure_parent(path)) failure = "directory_failed";
         else if (!session.run([&](fs::FS &fs) {
-            return !fs.exists(path) && !fs.exists(temporary);
+            if (fs.exists(path)) {
+                fs::File current = fs.open(path);
+                if (!overwrite || !current || current.isDirectory()) return false;
+            }
+            return !fs.exists(temporary) && !fs.exists(backup);
         })) failure = "file_exists";
         else if (!(private_created = output.open(session, temporary))) failure = "open_failed";
     }
 #else
-    if (destination == Destination::Repository) failure = "unsupported";
+    if (destination == Destination::Sd) failure = "unsupported";
 #endif
     if (destination == Destination::Staging) {
         partition = ResmedOta::get_staging_partition();
@@ -118,7 +118,9 @@ void run_upload() {
         xSemaphoreGive(mutex);
         if (finished) break;
         if (!size) { ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000)); continue; }
-        if (!written && ring[offset] == 0xe9) { failure = "esp_image_not_resmed"; break; }
+        if (destination == Destination::Staging && !written && ring[offset] == 0xe9) {
+            failure = "esp_image_not_resmed"; break;
+        }
         if (destination == Destination::Staging) {
             if (written > partition->size || size > partition->size - written) {
                 failure = "staging_partition_too_small";
@@ -146,7 +148,9 @@ void run_upload() {
         changed();
         Drained notify;
         const bool drained_success = !status.error[0] && status.written >= drain_end;
-        if (drain_notify && (status.error[0] || drained_success)) notify.swap(drain_notify);
+        if (drain_notify && (status.error[0] ||
+            (drained_success && !(final_received && drain_end == status.received))))
+            notify.swap(drain_notify);
         xSemaphoreGive(mutex);
         if (notify) notify(drained_success);
         vTaskDelay(1);
@@ -158,7 +162,7 @@ void run_upload() {
         changed();
         xSemaphoreGive(mutex);
 #if AB_STORAGE_HAS_SDCARD
-        if (destination == Destination::Repository && !output.finish(written)) failure = "sd_finish_failed";
+        if (destination == Destination::Sd && !output.finish(written)) failure = "sd_finish_failed";
         if (!failure && explicit_bootloader) {
             if (!input.open(session, temporary)) failure = "image_read_failed";
             else {
@@ -181,9 +185,9 @@ void run_upload() {
         }
         xSemaphoreGive(mutex);
 #if AB_STORAGE_HAS_SDCARD
-        if (!failure && !interrupted() && destination == Destination::Repository) {
-            if (!failure && !(committed = publish_file(session, temporary, path))) failure = "publish_failed";
-            if (committed) ResmedFirmwareRepository::notify_published(path);
+        if (!failure && !interrupted() && destination == Destination::Sd) {
+            failure = session.publish_file(temporary, path, overwrite, backup);
+            committed = !failure;
         }
 #endif
     }
@@ -204,7 +208,8 @@ void run_upload() {
     status.source_ready = success;
     status.cancel_allowed = success && destination == Destination::Staging;
     if (!success || destination != Destination::Staging) {
-        OtaManager::end_manual_upload(success, success ? nullptr : status.error);
+        if (destination == Destination::Staging)
+            OtaManager::end_manual_upload(success, success ? nullptr : status.error);
         partition = nullptr;
     }
     status.state = success ? State::Ready : !strcmp(status.error, "cancelled") ? State::Cancelled : State::Failed;
@@ -222,7 +227,7 @@ void run_upload() {
     xSemaphoreGive(mutex);
     const bool cancelled = !strcmp(error, "cancelled");
     Log::logf(CAT_OTA, success || cancelled ? LOG_INFO : LOG_ERROR,
-        "ResMed upload %s id=%lu dest=%s path=%s bytes=%u received=%u%s%s\n",
+        "File upload %s id=%lu dest=%s path=%s bytes=%u received=%u%s%s\n",
         success ? "complete" : cancelled ? "cancelled" : "failed",
         static_cast<unsigned long>(id), destination_name, path, unsigned(written),
         unsigned(received), success ? "" : ": ", error);
@@ -241,29 +246,25 @@ void init() {
 }
 
 Result begin_upload(Destination destination, const char *filename, size_t size, uint32_t &id,
-                    bool bootloader) {
+                    bool bootloader, bool overwrite) {
     id = 0;
     if (!mutex) return Result::Unavailable;
-    if (destination != Destination::Repository && destination != Destination::Staging) return Result::Unsupported;
+    if (destination != Destination::Sd && destination != Destination::Staging) return Result::Unsupported;
     char path[ResmedFirmwareRepository::MAX_PATH];
-    if (destination == Destination::Repository && !bootloader) {
-        const int length = snprintf(path, sizeof(path), "%s/%s",
-                                    ResmedFirmwareRepository::ROOT, filename ? filename : "");
-        if (length < 0 || size_t(length) >= sizeof(path) ||
-            !ResmedFirmwareRepository::valid_path(path) ||
-            !strncasecmp(filename, "bootloaders/", 12))
-            return Result::InvalidName;
+    if (destination == Destination::Sd) {
+        if (!SdStorage::valid_write_path(filename) ||
+            !strncasecmp(filename, "/.upload-", 9)) return Result::InvalidName;
+        snprintf(path, sizeof(path), "%s", filename);
     } else {
         if (!ResmedFirmwareRepository::valid_filename(filename)) return Result::InvalidName;
-        const int length = destination == Destination::Repository
-            ? snprintf(path, sizeof(path), "%s/%s", ResmedFirmwareRepository::ROOT, filename)
-            : snprintf(path, sizeof(path), "%s", filename);
+        const int length = snprintf(path, sizeof(path), "%s", filename);
         if (length < 0 || size_t(length) >= sizeof(path)) return Result::InvalidName;
     }
-    if (size > MAX_IMAGE_BYTES) return Result::InvalidSize;
-    if (bootloader && (destination != Destination::Repository || (size && size != 0x4000)))
+    if (size > (destination == Destination::Sd ? MAX_FILE_BYTES : MAX_IMAGE_BYTES)) return Result::InvalidSize;
+    if (overwrite && destination != Destination::Sd) return Result::Unsupported;
+    if (bootloader && (destination != Destination::Sd || (size && size != 0x4000)))
         return Result::InvalidSize;
-    if (destination == Destination::Repository) {
+    if (destination == Destination::Sd) {
 #if AB_STORAGE_HAS_SDCARD
         if (!SdStorage::mounted() || !SdStorage::local_access_allowed()) return Result::Unavailable;
 #else
@@ -277,7 +278,7 @@ Result begin_upload(Destination destination, const char *filename, size_t size, 
         return Result::Busy;
     }
     const char *error = nullptr;
-    if (!OtaManager::begin_manual_upload(&error)) {
+    if (destination == Destination::Staging && !OtaManager::begin_manual_upload(&error)) {
         xSemaphoreGive(mutex);
         return Result::Busy;
     }
@@ -288,7 +289,7 @@ Result begin_upload(Destination destination, const char *filename, size_t size, 
         ring = static_cast<uint8_t *>(aircannect::Memory::alloc_large(capacity, true));
     }
     if (!ring) {
-        OtaManager::end_manual_upload(false, "upload_no_memory");
+        if (destination == Destination::Staging) OtaManager::end_manual_upload(false, "upload_no_memory");
         capacity = 0;
         xSemaphoreGive(mutex);
         return Result::NoMemory;
@@ -302,6 +303,9 @@ Result begin_upload(Destination destination, const char *filename, size_t size, 
     status.cancel_allowed = true;
     status.size = size;
     status.bootloader = bootloader;
+    status.overwrite = overwrite;
+    status.repository = destination == Destination::Sd &&
+        (bootloader || ResmedFirmwareRepository::valid_path(path));
     snprintf(status.path, sizeof(status.path), "%s", path);
     active = true;
     final_received = sealed = claimed = false;
@@ -325,7 +329,7 @@ Result begin_upload(Destination destination, const char *filename, size_t size, 
         status.complete = true;
         status.state = State::Failed;
         reject("worker_no_memory");
-        OtaManager::end_manual_upload(false, status.error);
+        if (destination == Destination::Staging) OtaManager::end_manual_upload(false, status.error);
         id = 0;
         xSemaphoreGive(mutex);
         return Result::NoMemory;
@@ -338,13 +342,15 @@ Result submit_chunk(uint32_t id, size_t index, const uint8_t *data, size_t lengt
     if (!mutex) return Result::Unavailable;
     xSemaphoreTake(mutex, portMAX_DELAY);
     Result result = Result::Accepted;
-    const size_t limit = status.bootloader ? 0x4000 : MAX_IMAGE_BYTES;
+    const size_t limit = status.bootloader ? 0x4000 :
+        status.destination == Destination::Sd ? MAX_FILE_BYTES : MAX_IMAGE_BYTES;
     if (!id || status.id != id) result = Result::UnknownId;
     else if (!active || sealed || status.error[0]) result = Result::Closed;
     else if (final_received || index != status.received || length > MAX_CHUNK_BYTES ||
              index > limit || length > limit - index ||
              (length && !data) || (status.size && (index > status.size || length > status.size - index)) ||
-             (final && (!index && !length)) || (final && status.size && index + length != status.size)) {
+             (final && !index && !length && status.destination != Destination::Sd) ||
+             (final && status.size && index + length != status.size)) {
         result = Result::InvalidChunk;
         reject("invalid_chunk");
     } else if (length > capacity - (produced - consumed)) {
@@ -412,9 +418,10 @@ Result when_drained(uint32_t id, size_t end, Drained notify) {
     Result result = Result::Accepted;
     bool immediate = false, success = false;
     if (!id || status.id != id) result = Result::UnknownId;
-    else if (!end || end > status.received || !notify) result = Result::InvalidChunk;
+    else if ((!end && !final_received) || end > status.received || !notify) result = Result::InvalidChunk;
     else if (drain_notify) result = Result::Busy;
-    else if (status.error[0] || status.complete || status.written >= end) {
+    else if (status.error[0] || status.complete ||
+             (status.written >= end && !(final_received && end == status.received))) {
         immediate = true;
         success = !status.error[0] && status.written >= end;
     } else {
@@ -485,4 +492,4 @@ const char *result_name(Result result) {
     return "unavailable";
 }
 
-}  // namespace ResmedFirmwareUpload
+}  // namespace FileUpload
