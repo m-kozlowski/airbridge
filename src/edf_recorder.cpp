@@ -2119,6 +2119,9 @@ static void sample_pld() {
         {"TgtVent.2s", "TGT", true},
         {"AlvMinVent.2s", "AAV", true},
         {"Snore.2s", "SNI"},    {"FlowLim.2s", "FFL"},
+        // Optional: also enable these channels in Air10Edf::PLD_SIGNALS.
+        // {"CLRatio.2s", "RCR"},
+        // {"TRRatio.2s", "RTR"},
     };
 
     const uint32_t started_ms = millis();
