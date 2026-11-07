@@ -21,6 +21,8 @@ On a fresh installation, connect to its `airbridge_...` WiFi network
 (password `airbridge`), open `http://192.168.4.1/`, and complete the setup wizard.
 Default Web UI login: `admin` / `airbridge`.
 
+For HTTP integrations, see the [HTTP API reference](docs/http_api.md).
+
 ## Related tools
 
 [airbreak-plus](https://github.com/m-kozlowski/airbreak-plus/tree/master/python/) contains Python tools for direct serial/TCP interaction:
