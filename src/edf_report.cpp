@@ -874,7 +874,7 @@ bool refresh_index(const SdStorage::Session &session, const Job *job = nullptr) 
         index_error = "catalog_day";
         if (!catalog_day(next.entry.therapy_day, next.day)) return false;
         // STR/Identification readiness is not a detail-data revision.
-        index_scan.summary_changed |= index[i].entry.str_revision != next.entry.str_revision ||
+        index_scan.summary_changed |= index[i].entry.str_digest != next.entry.str_digest ||
             ((index[i].entry.flags ^ next.entry.flags) & EdfCatalog::ENTRY_STR_READY);
         const bool changed = strcmp(index[i].entry.file_prefix, next.entry.file_prefix) ||
             strcmp(index[i].entry.therapy_day, next.entry.therapy_day) ||
@@ -1953,7 +1953,7 @@ bool publication_key(const Request &request, uint8_t (&key)[32]) {
         const auto &entry = index[i];
         if (!selected(entry, first, last)) continue;
         identity.print("/%u:%s:%s:%u:%u:%u:%u", unsigned(i), entry.entry.therapy_day,
-            entry.entry.file_prefix, entry.entry.flags, entry.entry.str_revision,
+            entry.entry.file_prefix, entry.entry.flags, entry.entry.str_digest,
             entry.key.present, entry.key.checksums);
         for (size_t k = 0; k < 5; ++k) {
             identity.print(":%llu:", static_cast<unsigned long long>(entry.key.sizes[k]));

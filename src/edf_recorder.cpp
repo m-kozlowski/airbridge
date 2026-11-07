@@ -378,10 +378,13 @@ static bool publish_single_file(const char *partial_path,
 
     const bool had_final = storage->exists(final_path);
     if (had_final && !storage->rename(final_path, backup_path)) return false;
-    if (!storage->rename(partial_path, final_path)) {
-        if (had_final) (void)storage->rename(backup_path, final_path);
-        return false;
-    }
+    const bool published = storage->rename(partial_path, final_path);
+    if (!published && had_final) (void)storage->rename(backup_path, final_path);
+    // Invalidate at the filesystem operation, even if rollback or later catalog
+    // publication fails. Pending journal replacements do not change root STR.
+    if ((published || had_final) && !strcmp(final_path, "/STR.edf"))
+        SdStorage::notify_str_changed();
+    if (!published) return false;
     if (had_final && !storage->remove(backup_path)) {
         Log::logf(CAT_EDF, LOG_WARN,
                   "could not remove metadata backup %s\n", backup_path);
@@ -503,6 +506,8 @@ static void recover_str_file() {
     if (!storage->exists(FINAL) && storage->exists(BACKUP)) {
         if (!storage->rename(BACKUP, FINAL))
             status_error("STR recovery failed");
+        else
+            SdStorage::notify_str_changed();
     } else if (storage->exists(FINAL) && storage->exists(BACKUP)) {
         storage->remove(BACKUP);
     }
@@ -2620,6 +2625,49 @@ static void reset_session_state(bool rollover = false) {
     if (!rollover) xQueueReset(raw_queue);
 }
 
+static EdfCatalog::SessionMetadata session_metadata(uint8_t finalized_mask = 0) {
+    EdfCatalog::SessionMetadata metadata = {};
+    memcpy(metadata.therapy_day, status.therapy_day, sizeof(metadata.therapy_day));
+    memcpy(metadata.file_prefix, status.file_prefix, sizeof(metadata.file_prefix));
+    metadata.start_seconds = session_clock.native_start;
+    uint32_t coverage = 0;
+    size_t i = 0;
+    for (const OutputFile *output : {&brp.output, &pld.output, &sad.output, &eve, &csl}) {
+        const uint8_t bit = 1u << i;
+        if (output->created && output->schema) {
+            bool partial = !(finalized_mask & bit);
+            uint32_t size = Air10Edf::header_size(*output->schema) +
+                output->records * Air10Edf::record_size(*output->schema);
+            if (!output->open && partial) {
+                // A failed write can leave a short tail; report the remaining
+                // file rather than pretending it has only complete records.
+                char path[128];
+                output_path(*output, "edf.part", path);
+                fs::File file = storage->open(path, FILE_READ);
+                if (!file) {
+                    output_path(*output, "edf", path);
+                    file = storage->open(path, FILE_READ);
+                    partial = false;
+                }
+                if (!file || file.isDirectory()) { ++i; continue; }
+                size = file.size();
+                file.close();
+            }
+            metadata.files_mask |= bit;
+            if (partial) metadata.part_mask |= bit;
+            metadata.file_sizes[i] = size;
+            if (i < 3) coverage = max(coverage,
+                output->records * output->schema->record_duration_seconds);
+        }
+        ++i;
+    }
+    constexpr uint8_t all_files = (1u << EdfCatalog::SESSION_FILE_COUNT) - 1;
+    metadata.closed = finalized_mask == all_files && metadata.files_mask == all_files;
+    if (metadata.closed)
+        metadata.end_seconds = metadata.start_seconds + coverage;
+    return metadata;
+}
+
 static void start_session(const ControlEvent &event) {
     __atomic_store_n(&therapy_start_pending, false, __ATOMIC_RELEASE);
     next_start_ms = millis() + 5000;
@@ -2699,6 +2747,7 @@ static void start_session(const ControlEvent &event) {
     portEXIT_CRITICAL(&status_mux);
 
     capture_active = true;
+    EdfCatalog::publish_session(session_metadata());
     Log::logf(CAT_EDF, LOG_INFO,
               "recording %s/%s MID=%u VID=%u\n",
               status.therapy_day, status.file_prefix, mid, vid);
@@ -2706,12 +2755,16 @@ static void start_session(const ControlEvent &event) {
 
 static void update_record_status() {
     portENTER_CRITICAL(&status_mux);
+    const bool changed = status.brp_records != brp.output.records ||
+        status.pld_records != pld.output.records || status.sad_records != sad.output.records ||
+        status.eve_records != eve.records || status.csl_records != csl.records;
     status.brp_records = brp.output.records;
     status.pld_records = pld.output.records;
     status.sad_records = sad.output.records;
     status.eve_records = eve.records;
     status.csl_records = csl.records;
     portEXIT_CRITICAL(&status_mux);
+    if (changed) EdfCatalog::publish_session(session_metadata());
 }
 
 static void close_segment(uint32_t captured_ms) {
@@ -2723,9 +2776,13 @@ static void close_segment(uint32_t captured_ms) {
     update_record_status();
 
     // Attempt every finalization even after an earlier output failed.
-    for (OutputFile *output : {&brp.output, &pld.output, &sad.output, &eve, &csl})
-        complete = finalize_output(*output) && complete;
-    update_record_status();
+    uint8_t finalized_mask = 0, bit = 1;
+    for (OutputFile *output : {&brp.output, &pld.output, &sad.output, &eve, &csl}) {
+        if (finalize_output(*output)) finalized_mask |= bit;
+        else complete = false;
+        bit <<= 1;
+    }
+    const EdfCatalog::SessionMetadata metadata = session_metadata(finalized_mask);
     Status finished;
     portENTER_CRITICAL(&status_mux);
     finished = status;
@@ -2735,6 +2792,7 @@ static void close_segment(uint32_t captured_ms) {
 
     EdfCatalog::Entry catalog_entry;
     complete = commit_session_catalog(false, false, catalog_entry) && complete;
+    EdfCatalog::publish_session(metadata);
     const bool gaps = finished.raw_dropped || finished.decode_errors || finished.sequence_gaps;
     Log::logf(CAT_EDF, !complete ? LOG_ERROR : gaps ? LOG_WARN : LOG_INFO,
               "%s %s drops=%u decode=%u seq_gaps=%u\n",
@@ -2775,6 +2833,7 @@ static bool advance_segment(uint32_t captured_ms) {
         return false;
     }
     reset_session_state(true);
+    EdfCatalog::publish_session(session_metadata());
     Log::logf(CAT_EDF, LOG_INFO, "noon rollover %s/%s\n",
               status.therapy_day, status.file_prefix);
     return true;
@@ -2895,19 +2954,19 @@ static bool refresh_str_day(uint16_t day, uint32_t generation,
     success = success && !post_processing_cancelled() &&
         identity.generation == AirSenseState::identity_generation();
     if (success && SdStorage::try_acquire(true)) {
-        uint32_t revision = 0;
+        uint32_t digest = 0;
         bool catalog_changed = false;
         bool pending_resolved = false;
         if (summary_ready && record) {
             summary_ready = update_str_file(record, latest, identity, &file_changed);
             if (!summary_ready) trace.result = "publish_failed";
             // A content token survives retries after STR was published but the
-            // catalog was not. Consumers compare revisions, never order them.
+            // catalog was not. Consumers compare digests, never order them.
             uint8_t identification[4];
             SdStorage::put_le32(identification, identification_crc);
             uint32_t crc = crc32_ieee_update(crc32_ieee_initial(), record,
                 Air10Edf::record_size(Air10Edf::str_schema()));
-            revision = crc32_ieee_finish(crc32_ieee_update(crc, identification, sizeof(identification)));
+            digest = crc32_ieee_finish(crc32_ieee_update(crc, identification, sizeof(identification)));
         }
         for (uint32_t i = 0; success && i < count; i++) {
             success = !post_processing_cancelled();
@@ -2917,7 +2976,7 @@ static bool refresh_str_day(uint16_t day, uint32_t generation,
             }
             EdfCatalog::Entry &entry = entries[i];
             const uint8_t old_flags = entry.flags;
-            const uint32_t old_revision = entry.str_revision;
+            const uint32_t old_digest = entry.str_digest;
             entry.flags |= EdfCatalog::ENTRY_IDENTIFICATION_READY;
             if (summary_ready && record) {
                 entry.flags |= EdfCatalog::ENTRY_STR_READY;
@@ -2925,16 +2984,16 @@ static bool refresh_str_day(uint16_t day, uint32_t generation,
                 // Do not invalidate reports/exports merely by checking a day.
                 // Pending intent still repairs a reset between STR and catalog.
                 if (i == latest_index && (file_changed || required ||
-                    !(old_flags & EdfCatalog::ENTRY_STR_READY))) entry.str_revision = revision;
+                    !(old_flags & EdfCatalog::ENTRY_STR_READY))) entry.str_digest = digest;
             }
-            if (old_flags != entry.flags || old_revision != entry.str_revision) {
+            if (old_flags != entry.flags || old_digest != entry.str_digest) {
                 success = EdfCatalog::commit(entry);
                 if (success) {
                     catalog_changed = true;
                     identification_changed |= !(old_flags & EdfCatalog::ENTRY_IDENTIFICATION_READY);
                     ready_changed |= !(old_flags & EdfCatalog::ENTRY_STR_READY) &&
                         (entry.flags & EdfCatalog::ENTRY_STR_READY);
-                    content_changed |= old_revision != entry.str_revision;
+                    content_changed |= old_digest != entry.str_digest;
                 } else {
                     trace.result = "catalog_failed";
                 }
@@ -3349,7 +3408,14 @@ static void recorder_task(void *) {
             sample_oximetry();
         }
         if (status.active) update_record_status();
-        else if (have_storage) process_pending();
+        else if (have_storage) {
+            process_pending();
+            if (AirSenseState::local_background_allowed() && SdStorage::local_access_allowed() &&
+                !__atomic_load_n(&therapy_start_pending, __ATOMIC_ACQUIRE) &&
+                !__atomic_load_n(&therapy_wanted, __ATOMIC_ACQUIRE) &&
+                !Air10Clock::background_work_pending() && !Air10Stream::requested_pending())
+                EdfCatalog::refresh_metadata();
+        }
     }
 }
 

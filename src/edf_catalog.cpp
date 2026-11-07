@@ -19,6 +19,10 @@
 #include "sd_storage.h"
 
 namespace EdfCatalog {
+namespace Metadata {
+void catalog_reloaded(uint32_t count, uint32_t generation, bool (*read)(uint32_t, Entry &));
+void catalog_committed(uint32_t index, const Entry &entry, uint32_t count, uint32_t generation);
+}
 namespace {
 
 constexpr const char *CATALOG_DIR = "/airbridge";
@@ -109,7 +113,7 @@ static void encode_entry(const Entry &entry, uint8_t *out) {
     memcpy(out + 8, entry.file_prefix, 15);
     out[23] = entry.flags;
     SdStorage::put_le32(out + 24, entry.finalized_epoch);
-    SdStorage::put_le32(out + 28, entry.str_revision);
+    SdStorage::put_le32(out + 28, entry.str_digest);
 }
 
 static bool decode_entry(const uint8_t *data, Entry &entry) {
@@ -118,8 +122,13 @@ static bool decode_entry(const uint8_t *data, Entry &entry) {
     memcpy(entry.file_prefix, data + 8, 15);
     entry.flags = data[23];
     entry.finalized_epoch = SdStorage::get_le32(data + 24);
-    entry.str_revision = SdStorage::get_le32(data + 28);
+    entry.str_digest = SdStorage::get_le32(data + 28);
     return valid_entry(entry);
+}
+
+// The caller holds the catalog mutex; this accessor never loads or touches SD.
+static bool metadata_entry(uint32_t index, Entry &entry) {
+    return index < status.entries && decode_entry(entries + size_t(index) * ENTRY_SIZE, entry);
 }
 
 static bool read_header(fs::File &file, Header &header) {
@@ -189,13 +198,17 @@ static bool load_catalog() {
     aircannect::Memory::free(entries);
     entries = loaded;
     portENTER_CRITICAL(&status_mux);
-    status.ready = true;
+    status.ready = false;
     initialized = true;
     validated_files_revision = revision;
     change_count = 0;
     status.entries = header.count;
     status.generation = header.generation;
     status.error[0] = 0;
+    portEXIT_CRITICAL(&status_mux);
+    Metadata::catalog_reloaded(status.entries, status.generation, metadata_entry);
+    portENTER_CRITICAL(&status_mux);
+    status.ready = true;
     __atomic_add_fetch(&status_revision, 1, __ATOMIC_RELEASE);
     portEXIT_CRITICAL(&status_mux);
     return true;
@@ -350,6 +363,7 @@ bool commit(const Entry &entry) {
         if (change_count < 32) ++change_count;
         __atomic_add_fetch(&status_revision, 1, __ATOMIC_RELEASE);
         portEXIT_CRITICAL(&status_mux);
+        Metadata::catalog_committed(changed_index, entry, status.entries, status.generation);
         Log::logf(CAT_EDF, LOG_DEBUG,
                   "catalog commit %s entries=%u generation=%u\n",
                   entry.file_prefix, status.entries, status.generation);
@@ -448,6 +462,17 @@ void get_status(Status &out) {
     out = status;
     out.ready &= validated_files_revision == SdStorage::files_revision(SdStorage::FileScope::Catalog);
     portEXIT_CRITICAL(&status_mux);
+}
+
+namespace Metadata {
+bool rebuild_projection() {
+    if (!mutex || xSemaphoreTake(mutex, 0) != pdTRUE) return false;
+    const bool ready = status.ready && validated_files_revision ==
+        SdStorage::files_revision(SdStorage::FileScope::Catalog);
+    if (ready) catalog_reloaded(status.entries, status.generation, metadata_entry);
+    xSemaphoreGive(mutex);
+    return ready;
+}
 }
 
 uint32_t revision() {

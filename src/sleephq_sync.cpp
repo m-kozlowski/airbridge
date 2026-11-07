@@ -62,7 +62,7 @@ struct Journal {
     uint32_t import_id;
     uint32_t team_id;
     uint32_t finalized_epoch;
-    uint32_t str_revision;
+    uint32_t str_digest;
     char therapy_day[9];
     char file_prefix[16];
 };
@@ -275,7 +275,7 @@ static bool decode_journal(const uint8_t *data, Journal &journal) {
     journal.import_id = SdStorage::get_le32(data + 12);
     journal.team_id = SdStorage::get_le32(data + 16);
     journal.finalized_epoch = SdStorage::get_le32(data + 20);
-    journal.str_revision = SdStorage::get_le32(data + 48);
+    journal.str_digest = SdStorage::get_le32(data + 48);
     memcpy(journal.therapy_day, data + 24, 8);
     memcpy(journal.file_prefix, data + 32, 15);
     return true;
@@ -344,7 +344,7 @@ static void encode_marker(const EdfCatalog::Entry &entry, uint8_t *data) {
     data[4] = JOURNAL_VERSION;
     data[5] = entry.flags;
     SdStorage::put_le32(data + 8, entry.finalized_epoch);
-    SdStorage::put_le32(data + 12, entry.str_revision);
+    SdStorage::put_le32(data + 12, entry.str_digest);
     SdStorage::put_le32(data + 16, crc32_ieee(data, 16));
 }
 
@@ -362,7 +362,7 @@ static bool marker_valid(SdStorage::Session &storage, const StatePaths &paths,
         data[5] == entry.flags && SdStorage::get_le32(data + 8) == entry.finalized_epoch &&
         SdStorage::get_le32(data + size - 4) == crc32_ieee(data, size - 4) &&
         (!include_str || (size == 16 ? 0 : SdStorage::get_le32(data + 12)) ==
-                         entry.str_revision);
+                         entry.str_digest);
     if (file) file.close();
     return valid;
 }

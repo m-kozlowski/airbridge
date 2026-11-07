@@ -70,10 +70,13 @@ uint32_t file_scope_mask(const char *path) {
     constexpr uint32_t reports = 1u << unsigned(FileScope::Reports);
     constexpr uint32_t exports = 1u << unsigned(FileScope::Export);
     constexpr uint32_t firmware = 1u << unsigned(FileScope::Firmware);
+    constexpr uint32_t sessions = 1u << unsigned(FileScope::SessionFiles);
+    constexpr uint32_t str = 1u << unsigned(FileScope::Str);
     constexpr uint32_t sources = recording | reports | exports;
     static constexpr struct { const char *path; uint32_t scopes; } roots[] = {
-        {"/DATALOG", sources},
-        {"/STR.edf", sources}, {"/STR.edf.part", sources}, {"/STR.edf.bak", sources},
+        {"/DATALOG", sources | sessions},
+        {"/STR.edf", sources | str}, {"/STR.edf.part", sources | str},
+        {"/STR.edf.bak", sources | str},
         {"/Identification.tgt", sources}, {"/Identification.crc", sources},
         {"/Identification.tgt.part", sources}, {"/Identification.crc.part", sources},
         {"/Identification.tgt.bak", sources}, {"/Identification.crc.bak", sources},
@@ -158,6 +161,7 @@ void set_bus_status(const sdmmc_card_t *card) {
 
 struct Request {
     enum Kind { Run, Acquire, TryAcquire, Release, Close, Begin, End, Mount, UsbIo } kind;
+    bool idle_only;
     bool (*operation)(fs::FS &, void *);
     void *context;
     uint32_t generation;
@@ -311,6 +315,18 @@ bool request_background_turn(Request &request) {
         return background_waiters[0].token == request.generation;
     }
     return false;
+}
+
+bool idle_acquire_allowed() {
+    if (__atomic_load_n(&recorder_waiting, __ATOMIC_ACQUIRE) || maintenance_pending()) return false;
+    if (!worker) return true;
+    refresh_background_waiters();
+    Request *pending = nullptr;
+    return !exclusive_waiter && !first_background_waiter &&
+        !(background_resume_pending && uint32_t(millis() - background_resume_at) < BACKGROUND_RESUME_MS) &&
+        xQueuePeek(requests, &pending, 0) != pdTRUE &&
+        xQueuePeek(interactive_requests, &pending, 0) != pdTRUE &&
+        xQueuePeek(background_requests, &pending, 0) != pdTRUE;
 }
 
 OpenFile *find_file(uint32_t id) {
@@ -481,9 +497,11 @@ void process_request(Request &value) {
         }
         request->success = true;
     } else if (request->kind == Request::Acquire || request->kind == Request::TryAcquire) {
+        const bool idle = request->kind == Request::TryAcquire && request->idle_only;
         if (local_access_allowed() && mounted() && !direct_owner &&
-            (request->kind == Request::Acquire || !active_sessions)) {
-            revoke_sessions();
+            (request->kind == Request::Acquire || !active_sessions) &&
+            (!idle || idle_acquire_allowed())) {
+            if (!idle) revoke_sessions();
             __atomic_store_n(&direct_owner, request->caller, __ATOMIC_RELEASE);
             request->success = true;
         }
@@ -554,6 +572,7 @@ bool direct_request(Request &request) {
     // No executor means no auxiliary handles; keep the same ownership token.
     if (request.kind == Request::Acquire || request.kind == Request::TryAcquire) {
         if (!local_access_allowed() || !mounted()) return false;
+        if (request.kind == Request::TryAcquire && request.idle_only && !idle_acquire_allowed()) return false;
         TaskHandle_t expected = nullptr;
         return __atomic_compare_exchange_n(&direct_owner, &expected, request.caller,
             false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
@@ -1247,6 +1266,12 @@ void notify_files_changed(const char *path, const char *destination) {
     portEXIT_CRITICAL(&status_mux);
 }
 
+void notify_str_changed() {
+    portENTER_CRITICAL(&status_mux);
+    ++file_mutation_revision[size_t(FileScope::Str)];
+    portEXIT_CRITICAL(&status_mux);
+}
+
 bool acquire() {
 #if AB_STORAGE_HAS_SDCARD
     __atomic_add_fetch(&recorder_waiting, 1, __ATOMIC_ACQ_REL);
@@ -1261,7 +1286,7 @@ bool acquire() {
 #endif
 }
 
-bool try_acquire(bool reserve_next) {
+static bool try_acquire_impl(bool reserve_next, bool idle_only) {
 #if AB_STORAGE_HAS_SDCARD
     const TaskHandle_t caller = xTaskGetCurrentTaskHandle();
     const TaskHandle_t waiting = __atomic_load_n(&maintenance_waiter, __ATOMIC_ACQUIRE);
@@ -1273,6 +1298,9 @@ bool try_acquire(bool reserve_next) {
     }
     Request request = {};
     request.kind = Request::TryAcquire;
+    request.idle_only = idle_only;
+    // An idle admission probe must not sit behind a reader-blocked mutation.
+    if (idle_only) request.access = Access::ReadOnly;
     const bool taken = dispatch(request, false);
     if (taken && __atomic_load_n(&maintenance_waiter, __ATOMIC_ACQUIRE) == caller)
         __atomic_store_n(&maintenance_granted, true, __ATOMIC_RELEASE);
@@ -1280,9 +1308,13 @@ bool try_acquire(bool reserve_next) {
     return taken;
 #else
     (void)reserve_next;
+    (void)idle_only;
     return false;
 #endif
 }
+
+bool try_acquire(bool reserve_next) { return try_acquire_impl(reserve_next, false); }
+bool try_acquire_idle() { return try_acquire_impl(false, true); }
 
 void finish_maintenance() {
 #if AB_STORAGE_HAS_SDCARD

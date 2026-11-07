@@ -2545,6 +2545,130 @@ static void handleTimeAction(AsyncWebServerRequest *request) {
 }
 
 #if AB_STORAGE_HAS_SDCARD
+static uint32_t storage_session_readers = 0;
+
+class StorageSessionsResponse : public BufferedResponse {
+public:
+    static void *operator new(size_t size, const std::nothrow_t &) noexcept {
+        return aircannect::Memory::alloc_large(size, size <= 4096);
+    }
+    static void operator delete(void *memory) noexcept { aircannect::Memory::free(memory); }
+    ~StorageSessionsResponse() override {
+        EdfCatalog::release_page(page);
+        __atomic_sub_fetch(&storage_session_readers, 1, __ATOMIC_RELEASE);
+    }
+
+    EdfCatalog::Page page;
+
+    void begin() {
+        EdfCatalog::PageCursor measure;
+        BufferedResponse::begin(200, measure.read(page, nullptr, SIZE_MAX));
+        addHeader("Cache-Control", "no-store");
+    }
+    bool _sourceValid() const override { return true; }
+
+protected:
+    size_t readBody(size_t, char *out, size_t capacity) override {
+        return cursor_.read(page, out, capacity);
+    }
+
+private:
+    EdfCatalog::PageCursor cursor_;
+};
+
+static void handleStorageSessions(AsyncWebServerRequest *request) {
+    if (!checkAuth(request)) return;
+    const size_t count = request->params();
+    if (count > 4) {
+        request->send(400, "application/json", "{\"error\":\"invalid_selection\"}");
+        return;
+    }
+    const char *since = nullptr;
+    const char *cursor = nullptr;
+    uint32_t limit = EdfCatalog::DEFAULT_PAGE_SIZE;
+    bool seen_limit = false;
+    bool seen_order = false, descending = false;
+    for (size_t i = 0; i < count; ++i) {
+        const auto *param = request->getParam(i);
+        if (!param || param->isPost() || param->isFile() || param->name().length() > 6 ||
+            strlen(param->name().c_str()) != param->name().length()) {
+            request->send(400, "application/json", "{\"error\":\"invalid_selection\"}");
+            return;
+        }
+        const bool is_since = param->name() == "since";
+        const bool is_cursor = param->name() == "cursor";
+        const bool is_limit = param->name() == "limit";
+        const bool is_order = param->name() == "order";
+        if ((!is_since && !is_cursor && !is_limit && !is_order) ||
+            (is_since && since) || (is_cursor && cursor) ||
+            (is_limit && seen_limit) || (is_order && seen_order)) {
+            request->send(400, "application/json", "{\"error\":\"invalid_selection\"}");
+            return;
+        }
+        const size_t maximum = is_since ? 8 : is_cursor ? 24 : is_order ? 4 : 10;
+        if (param->value().length() > maximum) {
+            request->send(400, "application/json", is_since ? "{\"error\":\"invalid_day\"}" :
+                is_cursor ? "{\"error\":\"invalid_cursor\"}" :
+                is_order ? "{\"error\":\"invalid_order\"}" : "{\"error\":\"invalid_limit\"}");
+            return;
+        }
+        const char *value = param->value().c_str();
+        if (strlen(value) != param->value().length()) {
+            request->send(400, "application/json", "{\"error\":\"invalid_selection\"}");
+            return;
+        }
+        if (is_since) since = value;
+        else if (is_cursor) cursor = value;
+        else if (is_order) {
+            seen_order = true;
+            if (strcmp(value, "asc") && strcmp(value, "desc")) {
+                request->send(400, "application/json", "{\"error\":\"invalid_order\"}");
+                return;
+            }
+            descending = !strcmp(value, "desc");
+        } else {
+            seen_limit = true;
+            if (!aircannect::parse_uint32_decimal(value, limit) || !limit || limit > EdfCatalog::MAX_PAGE_SIZE) {
+                request->send(400, "application/json", "{\"error\":\"invalid_limit\"}");
+                return;
+            }
+        }
+    }
+    if (__atomic_fetch_add(&storage_session_readers, 1, __ATOMIC_ACQ_REL) >= 2) {
+        __atomic_sub_fetch(&storage_session_readers, 1, __ATOMIC_RELEASE);
+        request->send(503, "application/json", "{\"error\":\"catalog_busy\"}");
+        return;
+    }
+    std::unique_ptr<StorageSessionsResponse> response(new(std::nothrow) StorageSessionsResponse);
+    if (!response) {
+        __atomic_sub_fetch(&storage_session_readers, 1, __ATOMIC_RELEASE);
+        request->send(503, "application/json", "{\"error\":\"allocation_failed\"}");
+        return;
+    }
+    const auto result = EdfCatalog::copy_page(since, response->page, cursor, limit, descending);
+    switch (result) {
+        case EdfCatalog::PageResult::Ready:
+            response->begin();
+            request->send(response.release());
+            return;
+        case EdfCatalog::PageResult::InvalidDay:
+            request->send(400, "application/json", "{\"error\":\"invalid_day\"}");
+            return;
+        case EdfCatalog::PageResult::InvalidCursor:
+            request->send(400, "application/json", "{\"error\":\"invalid_cursor\"}");
+            return;
+        case EdfCatalog::PageResult::InvalidLimit:
+            request->send(400, "application/json", "{\"error\":\"invalid_limit\"}");
+            return;
+        case EdfCatalog::PageResult::Busy:
+            request->send(503, "application/json", "{\"error\":\"catalog_busy\"}");
+            return;
+        case EdfCatalog::PageResult::Unavailable:
+            request->send(503, "application/json", "{\"error\":\"catalog_unavailable\"}");
+            return;
+    }
+}
+
 class StorageResponse : public AsyncAbstractResponse {
 public:
     StorageResponse(std::shared_ptr<StorageBrowser::Transfer> transfer,
@@ -2817,6 +2941,7 @@ void WebUI::init(uint16_t port) {
     http->on("/api/export/sleephq", HTTP_POST, [](AsyncWebServerRequest *r) { handleExportRequest(r, false); });
 #if AB_STORAGE_HAS_SDCARD
     http->on("/api/storage/usb", HTTP_POST, handleStorageUsb);
+    http->on("/api/sessions", HTTP_GET, handleStorageSessions);
     http->on("/api/storage/list", HTTP_GET, [](AsyncWebServerRequest *r) {
         handleStorage(r, StorageBrowser::Kind::List);
     });

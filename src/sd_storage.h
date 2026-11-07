@@ -118,12 +118,17 @@ void usb_ejected();
 
 // External file changes are scoped to the owners that consume those paths.
 // Recorder/catalog commits and private cache writes retain their own revisions.
-enum class FileScope : uint8_t { All, Catalog, Recording, Reports, Export, Firmware, Count };
+enum class FileScope : uint8_t {
+    All, Catalog, Recording, Reports, Export, Firmware, SessionFiles, Str, Count
+};
 uint32_t files_revision(FileScope scope = FileScope::All);
 // Canonical absolute paths; includes descendants and affected parent directories.
 // Rename supplies both paths. Omit paths when the change extent is unknown.
 // Unknown changes and successful remounts invalidate all scopes.
 void notify_files_changed(const char *path = nullptr, const char *destination = nullptr);
+// Recorder publishes report/export changes through the catalog. STR metadata
+// must also be invalidated if that later catalog commit fails.
+void notify_str_changed();
 
 // Recorder/recovery only. Waits for current local I/O, never for a network
 // consumer; acquisition invalidates all previously admitted background work.
@@ -134,6 +139,9 @@ bool acquire();
 // remains for retry. cancel_acquire abandons it even before admission.
 // Background owners checkpoint; admitted readers finish before maintenance.
 bool try_acquire(bool reserve_next = false);
+// Metadata-only opportunistic access: queued work, FIFO turns and reservations
+// take precedence, and their admission state is never revoked. Release normally.
+bool try_acquire_idle();
 void finish_maintenance();
 void cancel_acquire();
 bool maintenance_pending();
