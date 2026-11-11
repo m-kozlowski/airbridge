@@ -900,7 +900,7 @@
 		(pad "1" smd roundrect
 			(at -8.89 -7.62)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 1 "/UART_TX_MCU")
 			(thermal_bridge_angle 45)
@@ -909,7 +909,7 @@
 		(pad "2" smd roundrect
 			(at -8.89 -5.079999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 2 "/UART_RX_MCU")
 			(thermal_bridge_angle 45)
@@ -918,7 +918,7 @@
 		(pad "3" smd roundrect
 			(at -8.89 -2.54)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 15 "unconnected-(U1-unused-Pad3)")
 			(thermal_bridge_angle 45)
@@ -927,7 +927,7 @@
 		(pad "4" smd roundrect
 			(at -8.89 0)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 16 "unconnected-(U1-unused-Pad4)")
 			(thermal_bridge_angle 45)
@@ -936,7 +936,7 @@
 		(pad "5" smd roundrect
 			(at -8.89 2.539999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 17 "unconnected-(U1-unused-Pad5)")
 			(thermal_bridge_angle 45)
@@ -945,7 +945,7 @@
 		(pad "6" smd roundrect
 			(at -8.89 5.079999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 18 "unconnected-(U1-unused-Pad6)")
 			(thermal_bridge_angle 45)
@@ -954,7 +954,7 @@
 		(pad "7" smd roundrect
 			(at -8.89 7.62)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 19 "unconnected-(U1-unused-Pad7)")
 			(thermal_bridge_angle 45)
@@ -963,7 +963,7 @@
 		(pad "8" smd roundrect
 			(at 8.889999 7.62)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 20 "unconnected-(U1-unused-Pad8)")
 			(thermal_bridge_angle 45)
@@ -972,7 +972,7 @@
 		(pad "9" smd roundrect
 			(at 8.889999 5.079999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 21 "unconnected-(U1-unused-Pad9)")
 			(thermal_bridge_angle 45)
@@ -981,7 +981,7 @@
 		(pad "10" smd roundrect
 			(at 8.889999 2.539999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 22 "unconnected-(U1-unused-Pad10)")
 			(thermal_bridge_angle 45)
@@ -990,7 +990,7 @@
 		(pad "11" smd roundrect
 			(at 8.889999 0)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 23 "unconnected-(U1-unused-Pad11)")
 			(thermal_bridge_angle 45)
@@ -999,7 +999,7 @@
 		(pad "12" smd roundrect
 			(at 8.889999 -2.54)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 3 "/+3V3")
 			(thermal_bridge_angle 45)
@@ -1008,7 +1008,7 @@
 		(pad "13" smd roundrect
 			(at 8.889999 -5.079999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 4 "/GND")
 			(thermal_bridge_angle 45)
@@ -1017,7 +1017,7 @@
 		(pad "14" smd roundrect
 			(at 8.889999 -7.62)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 14 "unconnected-(U1-VBUS_{slash}_USB_only-Pad14)")
 			(thermal_bridge_angle 45)
@@ -1026,7 +1026,7 @@
 		(pad "15" smd roundrect
 			(at -8.89 -6.349999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 5 "/SD_D1")
 			(thermal_bridge_angle 45)
@@ -1035,7 +1035,7 @@
 		(pad "16" smd roundrect
 			(at -8.89 -3.81)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 6 "/SD_D2")
 			(thermal_bridge_angle 45)
@@ -1044,7 +1044,7 @@
 		(pad "17" smd roundrect
 			(at -8.89 -1.269999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 7 "/SD_D3")
 			(thermal_bridge_angle 45)
@@ -1053,7 +1053,7 @@
 		(pad "18" smd roundrect
 			(at -8.89 1.269999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 24 "unconnected-(U1-unused-Pad18)")
 			(thermal_bridge_angle 45)
@@ -1062,7 +1062,7 @@
 		(pad "19" smd roundrect
 			(at -8.89 3.81)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 25 "unconnected-(U1-unused-Pad19)")
 			(thermal_bridge_angle 45)
@@ -1071,7 +1071,7 @@
 		(pad "20" smd roundrect
 			(at -8.89 6.349999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 26 "unconnected-(U1-unused-Pad20)")
 			(thermal_bridge_angle 45)
@@ -1080,7 +1080,7 @@
 		(pad "21" smd roundrect
 			(at 8.889999 6.349999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 8 "/SD_CMD")
 			(thermal_bridge_angle 45)
@@ -1089,7 +1089,7 @@
 		(pad "22" smd roundrect
 			(at 8.889999 3.81)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 9 "/SD_D0")
 			(thermal_bridge_angle 45)
@@ -1098,7 +1098,7 @@
 		(pad "23" smd roundrect
 			(at 8.889999 1.269999)
 			(size 1.6 0.85)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 10 "/SD_CLK_MCU")
 			(thermal_bridge_angle 45)
@@ -1107,7 +1107,7 @@
 		(pad "32" smd roundrect
 			(at -0.991616 5.031739)
 			(size 1.016 2.032)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 11 "/SYS_5V")
 			(thermal_bridge_angle 45)
@@ -1116,7 +1116,7 @@
 		(pad "33" smd roundrect
 			(at 1.014983 5.031739)
 			(size 1.016 2.032)
-			(layers "F.Cu" "F.Mask")
+			(layers "F.Cu" "F.Paste" "F.Mask")
 			(roundrect_rratio 0.1)
 			(net 4 "/GND")
 			(thermal_bridge_angle 45)
