@@ -21,3 +21,4 @@ if "Import" in globals():
     env.AddBuildMiddleware(build_source, "*/ESPAsyncWebServer/src/WebResponses.cpp")
     env.AddBuildMiddleware(build_source, "*/ESPAsyncWebServer/src/AsyncEventSource.cpp")
     env.AddBuildMiddleware(build_source, "*/AsyncTCP/src/AsyncTCP.cpp")
+    env.AddBuildMiddleware(build_source, "*/AsyncTCP@*/src/AsyncTCP.cpp")
