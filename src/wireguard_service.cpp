@@ -41,6 +41,11 @@ bool deadline_reached(uint32_t now_ms, uint32_t deadline_ms) {
 
 }  // namespace
 
+WireguardService &wireguard_service() {
+    static WireguardService service;
+    return service;
+}
+
 const char *wireguard_state_name(WireguardState state) {
     switch (state) {
         case WireguardState::Disabled: return "disabled";

@@ -107,24 +107,26 @@ def fill_config_sections(html, source, catalogs=None, themes=None):
     sections = {}
     rows = source.split('} config_sections[] = {', 1)[1].split('};', 1)[0]
     for row in rows.splitlines():
-        if not row.strip():
+        if not row.strip() or row.strip() in ('#if AB_WIREGUARD_ENABLED', '#endif'):
             continue
-        match = re.fullmatch(r'\s*\{Config::Section::(\w+), "([^"]+)", "([^"]+)"\},\s*', row)
+        match = re.fullmatch(r'\s*\{Config::Section::(\w+), "([^"]+)", "([^"]+)"(?:, (false))?\},\s*', row)
         if not match:
             raise ValueError(f'unsupported config section: {row}')
-        symbol, name, label = match.groups()
-        sections[symbol] = {'id': name, 'label': label, 'keys': [], 'options': {}}
+        symbol, name, label, hidden = match.groups()
+        sections[symbol] = None if hidden else {'id': name, 'label': label, 'keys': [], 'options': {}}
 
     rows = source.split('static const KVEntry kv_table[] = {', 1)[1].split('};', 1)[0]
     for row in rows.splitlines():
-        if not row.strip():
+        if not row.strip() or row.strip() in ('#if AB_WIREGUARD_ENABLED', '#endif'):
             continue
         match = re.fullmatch(
-            r'\s*KV_(\w+)\("([^"]+)", "[^"]+", \w+, '
+            r'\s*KV_(\w+)\("([^"]+)", "[^"]+", [\w.]+, '
             r'(?:"(?:\\.|[^"\\])*"|[^,]+), (\w+)(.*?)\),\s*', row)
         if not match:
             raise ValueError(f'unsupported config field: {row}')
         kind, key, section, choices = match.groups()
+        if sections[section] is None:
+            continue
         sections[section]['keys'].append(key)
         if kind == 'LANGUAGE':
             sections[section]['options'][key] = [['auto', 'Browser language']] + [
@@ -142,7 +144,7 @@ def fill_config_sections(html, source, catalogs=None, themes=None):
     marker = '/* CONFIG_SECTIONS */ []'
     if html.count(marker) != 1:
         raise ValueError('expected one Config sections placeholder')
-    html = html.replace(marker, json.dumps(list(sections.values()), separators=(',', ':')))
+    html = html.replace(marker, json.dumps([s for s in sections.values() if s is not None], separators=(',', ':')))
     html = html.replace('/* UI_CATALOGS */ {}',
                         json.dumps(catalogs, ensure_ascii=True, separators=(',', ':')).replace('<', '\\u003c'))
     catalog = [{key: theme[key] for key in ('id', 'scheme', 'url')} for theme in themes]

@@ -12,6 +12,7 @@
 #include "resmed_firmware_repository.h"
 #include "file_upload.h"
 #include "resmed_ota.h"
+#include "wireguard_service.h"
 #include <string.h>
 
 namespace DeviceStatus {
@@ -42,6 +43,9 @@ struct Snapshot {
     ResmedFirmwareRepository::Status firmware_repository = {};
     FileUpload::Status file_upload = {};
     ResmedOta::Status resmed = {};
+#if AB_WIREGUARD_ENABLED
+    aircannect::WireguardStatus vpn = {};
+#endif
 };
 
 // Copy published owner state only; presentation must not query the device.
@@ -74,6 +78,9 @@ inline Snapshot snapshot() {
     ResmedFirmwareRepository::get_status(out.firmware_repository);
     FileUpload::get_status(out.file_upload);
     ResmedOta::get_status(out.resmed);
+#if AB_WIREGUARD_ENABLED
+    out.vpn = aircannect::wireguard_service().status();
+#endif
     return out;
 }
 

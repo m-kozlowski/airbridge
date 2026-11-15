@@ -6,6 +6,7 @@
 #include "uart_arbiter.h"
 #include "tcp_bridge.h"
 #include "wifi_setup.h"
+#include "wireguard_service.h"
 #include "oxi_ble.h"
 #include "oxi_udp.h"
 #include "oxi_arbiter.h"
@@ -43,6 +44,16 @@ static void IRAM_ATTR usb_vbus_changed() {
 #endif
 
 extern void dispatch_command(const char *line, String &response);
+
+#if AB_WIREGUARD_ENABLED
+static uint32_t wireguard_config_revision = 0;
+
+static void update_wireguard_config() {
+    aircannect::WireguardConfig config;
+    if (Config::copy_wireguard(config, wireguard_config_revision))
+        aircannect::wireguard_service().configure(config);
+}
+#endif
 
 #define SERIAL_LINE_MAX 256
 static char serial_line[SERIAL_LINE_MAX];
@@ -164,6 +175,9 @@ void setup() {
     // because that step calls NetworkHints::upsert with legacy hint values.
     NetworkHints::init();
     Config::load();
+#if AB_WIREGUARD_ENABLED
+    update_wireguard_config();
+#endif
     CrashDiagnostics::init();
     Log::logf(CAT_CONFIG, LOG_DEBUG, "Configuration loaded\n");
     OtaManager::init();
@@ -223,6 +237,13 @@ void loop() {
     ResmedOta::poll();
     ResmedFirmwareRepository::poll();
     WiFiSetup::check();
+#if AB_WIREGUARD_ENABLED
+    update_wireguard_config();
+    uint32_t sta, ap;
+    WiFiSetup::addresses(sta, ap);
+    aircannect::wireguard_service().poll(sta != 0 && WiFiSetup::is_connected(),
+        WiFiSetup::connected_ssid(), WiFiSetup::time_synced(), millis());
+#endif
     Log::poll();
     TcpBridge::poll_debug_clients();
     WebUI::handle();

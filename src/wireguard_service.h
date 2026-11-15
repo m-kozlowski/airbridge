@@ -91,6 +91,8 @@ private:
     WireguardStatus status_;
 };
 
+WireguardService &wireguard_service();
+
 }  // namespace aircannect
 
 #endif  // AB_WIREGUARD_ENABLED

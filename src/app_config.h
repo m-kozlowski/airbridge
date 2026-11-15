@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "board.h"
+#include "wireguard_config.h"
 
 #define WIFI_MAX_NETWORKS 4
 
@@ -19,6 +20,9 @@ struct WiFiNetwork {
 };
 
 struct AirBridgeConfig {
+#if AB_WIREGUARD_ENABLED
+    aircannect::WireguardConfig wireguard;
+#endif
     String      hostname;
     WiFiNetwork wifi_nets[WIFI_MAX_NETWORKS];
     uint8_t     wifi_net_count;     // populated slots
@@ -73,12 +77,12 @@ struct AirBridgeConfig {
 
 namespace Config {
     enum class Section : uint8_t {
-        All, Network, Access, Time, Oximetry, Uart, Smb, SleepHq, Updates, Logging
+        All, Network, Access, Time, Oximetry, Uart, Smb, SleepHq, Updates, Logging, Vpn
     };
 
     void init();
     void load();
-    bool save();
+    bool save(const char **error = nullptr);
     uint32_t revision(Section section = Section::All);
     void reset_defaults();
 
@@ -92,6 +96,40 @@ namespace Config {
     bool is_sensitive(const char *key);
     bool get_value(const char *key, String &out);
     bool set_value(const char *key, const char *value);
+
+    class Guard {
+    public:
+#if AB_WIREGUARD_ENABLED
+        Guard();
+        ~Guard();
+#else
+        Guard() = default;
+#endif
+        Guard(const Guard &) = delete;
+        Guard &operator=(const Guard &) = delete;
+    };
+
+    // Keep a multi-field VPN edit private until the complete profile is saved.
+    class Update {
+    public:
+        Update();
+        ~Update();
+        bool set_value(const char *key, const char *value);
+        bool save(const char **error = nullptr);
+    private:
+        Guard guard_;
+        const char *error_ = nullptr;
+        bool saved_ = false;
+        bool has_values_ = false;
+#if AB_WIREGUARD_ENABLED
+        aircannect::WireguardConfig before_;
+#endif
+    };
+
+#if AB_WIREGUARD_ENABLED
+    // Nonblocking main-loop copy; only saved/loaded complete profiles are published.
+    bool copy_wireguard(aircannect::WireguardConfig &out, uint32_t &revision);
+#endif
 
     String dump();
 

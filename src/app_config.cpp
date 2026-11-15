@@ -9,13 +9,17 @@
 #include <initializer_list>
 #include <lwip/sockets.h>
 #include <lwip/inet.h>
+#if AB_WIREGUARD_ENABLED
+#include "string_util.h"
+#include <freertos/semphr.h>
+#endif
 
 #define CFG_DEFAULT_TCP_PORT    23
 
 static Preferences prefs;
 static AirBridgeConfig cfg;
 static uint32_t config_revision = 0;
-static uint32_t section_revisions[static_cast<size_t>(Config::Section::Logging) + 1] = {};
+static uint32_t section_revisions[static_cast<size_t>(Config::Section::Vpn) + 1] = {};
 static bool onboarding_done = false;
 static bool onboarding_stored = false;
 
@@ -24,6 +28,7 @@ static const struct {
     Config::Section section;
     const char *name;
     const char *label;
+    bool web = true;
 } config_sections[] = {
     {Config::Section::Network, "network", "Network"},
     {Config::Section::Access, "access", "Web access"},
@@ -34,12 +39,19 @@ static const struct {
     {Config::Section::SleepHq, "sleephq", "SleepHQ"},
     {Config::Section::Updates, "updates", "Firmware updates"},
     {Config::Section::Logging, "logging", "Logging"},
+#if AB_WIREGUARD_ENABLED
+    {Config::Section::Vpn, "vpn", "VPN", false},
+#endif
 };
 
 struct KVEntry {
     const char *key;
     const char *nvs_key;
-    enum { STR, U8, U16, BOOL } type;
+    enum { STR, U8, U16, BOOL
+#if AB_WIREGUARD_ENABLED
+        , WG_MODE
+#endif
+    } type;
     void *ptr;
     union Default {
         const char *text;
@@ -60,6 +72,7 @@ struct KVEntry {
 #define KV_LANGUAGE(k, n, f, d, s) KV_STR(k, n, f, d, s)
 #define KV_THEME(k, n, f, d, s) KV_STR(k, n, f, d, s)
 #define KV_BOOL(k, n, f, d, s, ...) {k, n, KVEntry::BOOL, &cfg.f, {uint32_t(d)}, false, Config::Section::s}
+#define KV_WG_MODE(k, n, f, d, s) {k, n, KVEntry::WG_MODE, &cfg.f, {uint32_t(d)}, false, Config::Section::s}
 
 static const KVEntry kv_table[] = {
     KV_STR("hostname", "hostname", hostname, DEFAULT_HOSTNAME, Network),
@@ -100,8 +113,60 @@ static const KVEntry kv_table[] = {
     KV_SECRET("sleephq_client_secret", "shq_secret", sleephq_client_secret, "", SleepHq),
     KV_STR("sleephq_team_id", "shq_team", sleephq_team_id, "", SleepHq),
     KV_STR("sleephq_device_id", "shq_device", sleephq_device_id, "", SleepHq),
+#if AB_WIREGUARD_ENABLED
+    KV_WG_MODE("wg_mode", "wg_mode", wireguard.mode, 0, Vpn),
+    KV_STR("wg_home", "wg_home", wireguard.home_ssids, "", Vpn),
+    KV_STR("wg_addr", "wg_addr", wireguard.address, "", Vpn),
+    KV_SECRET("wg_key", "wg_key", wireguard.private_key, "", Vpn),
+    KV_STR("wg_peer", "wg_peer", wireguard.peer_public_key, "", Vpn),
+    KV_SECRET("wg_psk", "wg_psk", wireguard.preshared_key, "", Vpn),
+    KV_STR("wg_ep", "wg_ep", wireguard.endpoint, "", Vpn),
+    KV_U16("wg_ka", "wg_ka", wireguard.keepalive_s, aircannect::AC_WIREGUARD_DEFAULT_KEEPALIVE_S, Vpn),
+    KV_STR("wg_allowed", "wg_allowed", wireguard.allowed_ips, aircannect::AC_WIREGUARD_DEFAULT_ALLOWED_IPS, Vpn),
+    KV_STR("wg_dns", "wg_dns", wireguard.dns, "", Vpn),
+#endif
 };
 
+#if AB_WIREGUARD_ENABLED
+static StaticSemaphore_t config_mutex_storage;
+static SemaphoreHandle_t config_mutex = nullptr;
+static aircannect::WireguardConfig saved_wireguard, published_wireguard;
+static uint32_t wireguard_revision = 0;
+
+Config::Guard::Guard() {
+    if (config_mutex) xSemaphoreTakeRecursive(config_mutex, portMAX_DELAY);
+}
+
+Config::Guard::~Guard() {
+    if (config_mutex) xSemaphoreGiveRecursive(config_mutex);
+}
+
+static void publish_wireguard() {
+    auto parsed = cfg.wireguard;
+    aircannect::normalize_wireguard_config(parsed);
+    const auto &current = published_wireguard;
+    if (wireguard_revision && current.mode == parsed.mode &&
+        current.home_ssids == parsed.home_ssids && current.address == parsed.address &&
+        current.private_key == parsed.private_key && current.peer_public_key == parsed.peer_public_key &&
+        current.preshared_key == parsed.preshared_key && current.endpoint == parsed.endpoint &&
+        current.keepalive_s == parsed.keepalive_s && current.allowed_ips == parsed.allowed_ips &&
+        current.dns == parsed.dns) return;
+    published_wireguard = parsed;
+    ++wireguard_revision;
+    if (!wireguard_revision) ++wireguard_revision;
+}
+
+bool Config::copy_wireguard(aircannect::WireguardConfig &out, uint32_t &revision) {
+    if (!config_mutex || xSemaphoreTakeRecursive(config_mutex, 0) != pdTRUE) return false;
+    const bool changed = revision != wireguard_revision;
+    if (changed) {
+        out = published_wireguard;
+        revision = wireguard_revision;
+    }
+    xSemaphoreGiveRecursive(config_mutex);
+    return changed;
+}
+#endif
 
 static void reset_value(const KVEntry &entry) {
     switch (entry.type) {
@@ -109,6 +174,9 @@ static void reset_value(const KVEntry &entry) {
         case KVEntry::U8:   *(uint8_t *)entry.ptr = entry.initial.number; break;
         case KVEntry::U16:  *(uint16_t *)entry.ptr = entry.initial.number; break;
         case KVEntry::BOOL: *(bool *)entry.ptr = entry.initial.number; break;
+#if AB_WIREGUARD_ENABLED
+        case KVEntry::WG_MODE: *(aircannect::WireguardMode *)entry.ptr = aircannect::WireguardMode(entry.initial.number); break;
+#endif
     }
 }
 
@@ -124,6 +192,9 @@ static void apply_defaults() {
 }
 
 void Config::init() {
+#if AB_WIREGUARD_ENABLED
+    config_mutex = xSemaphoreCreateRecursiveMutexStatic(&config_mutex_storage);
+#endif
     apply_defaults();
     prefs.begin("airbridge", false);
 }
@@ -248,6 +319,11 @@ static bool load_values() {
                 value = prefs.getBool(entry.nvs_key, value);
                 break;
             }
+#if AB_WIREGUARD_ENABLED
+            case KVEntry::WG_MODE:
+                *(aircannect::WireguardMode *)entry.ptr = aircannect::WireguardMode(prefs.getUChar(entry.nvs_key, 0));
+                break;
+#endif
         }
     }
     for (auto &revision : section_revisions) __atomic_add_fetch(&revision, 1, __ATOMIC_RELEASE);
@@ -255,7 +331,20 @@ static bool load_values() {
 }
 
 void Config::load() {
+    Guard guard;
     bool legacy = load_values();
+#if AB_WIREGUARD_ENABLED
+    saved_wireguard = cfg.wireguard;
+    aircannect::normalize_wireguard_config(cfg.wireguard);
+    const char *reason = uint8_t(cfg.wireguard.mode) > uint8_t(aircannect::WireguardMode::Always)
+        ? "bad_mode" : aircannect::wireguard_config_reject_reason(cfg.wireguard);
+    if (reason) {
+        Log::logf(CAT_CONFIG, LOG_WARN, "WireGuard disabled: %s\n", reason);
+        cfg.wireguard.mode = aircannect::WireguardMode::Off;
+    }
+    publish_wireguard();
+    cfg.wireguard = saved_wireguard;
+#endif
     // Classify old installations before migration or any new settings are saved.
     nvs_handle_t networks;
     if (nvs_open("wnet", NVS_READONLY, &networks) == ESP_OK) {
@@ -278,6 +367,9 @@ static esp_err_t store_value(nvs_handle_t handle, const KVEntry &entry) {
         case KVEntry::U8: return nvs_set_u8(handle, entry.nvs_key, *(uint8_t *)entry.ptr);
         case KVEntry::U16: return nvs_set_u16(handle, entry.nvs_key, *(uint16_t *)entry.ptr);
         case KVEntry::BOOL: return nvs_set_u8(handle, entry.nvs_key, *(bool *)entry.ptr);
+#if AB_WIREGUARD_ENABLED
+        case KVEntry::WG_MODE: return nvs_set_u8(handle, entry.nvs_key, uint8_t(*(aircannect::WireguardMode *)entry.ptr));
+#endif
     }
     return ESP_ERR_INVALID_ARG;
 }
@@ -288,7 +380,19 @@ static bool store_onboarding_marker() {
     return onboarding_stored;
 }
 
-bool Config::save() {
+bool Config::save(const char **reason) {
+    Guard guard;
+    if (reason) *reason = "nvs_save_failed";
+#if AB_WIREGUARD_ENABLED
+    aircannect::normalize_wireguard_config(cfg.wireguard);
+    const char *invalid = aircannect::wireguard_config_reject_reason(cfg.wireguard);
+    if (uint8_t(cfg.wireguard.mode) > uint8_t(aircannect::WireguardMode::Always)) invalid = "bad_mode";
+    if (invalid) {
+        if (reason) *reason = invalid;
+        Log::logf(CAT_CONFIG, LOG_WARN, "WireGuard configuration rejected: %s\n", invalid);
+        return false;
+    }
+#endif
     if (!store_onboarding_marker()) {
         Log::logf(CAT_CONFIG, LOG_ERROR, "Save failed: onboarding marker\n");
         load_values();
@@ -302,18 +406,45 @@ bool Config::save() {
         return false;
     }
     const char *stage = "commit";
+#if AB_WIREGUARD_ENABLED
+    bool wireguard_written = false;
+#endif
     for (const KVEntry &entry : kv_table) {
         error = store_value(handle, entry);
         if (error != ESP_OK) { stage = entry.nvs_key; break; }
+#if AB_WIREGUARD_ENABLED
+        wireguard_written |= entry.section == Section::Vpn;
+#endif
     }
     if (error == ESP_OK) error = nvs_commit(handle);
+#if AB_WIREGUARD_ENABLED
+    if (error != ESP_OK && wireguard_written) {
+        cfg.wireguard = saved_wireguard;
+        esp_err_t restored = ESP_OK;
+        for (const auto &entry : kv_table) {
+            if (entry.section != Section::Vpn) continue;
+            const esp_err_t result = store_value(handle, entry);
+            if (result != ESP_OK) restored = result;
+        }
+        if (restored == ESP_OK) restored = nvs_commit(handle);
+        if (restored != ESP_OK)
+            Log::logf(CAT_CONFIG, LOG_ERROR, "Cannot restore saved WireGuard configuration\n");
+    }
+#endif
     nvs_close(handle);
     if (error != ESP_OK) {
         Log::logf(CAT_CONFIG, LOG_ERROR, "Save failed: %s: %s\n", stage, esp_err_to_name(error));
         load_values();
     }
     apply_syslog();
+#if AB_WIREGUARD_ENABLED
+    if (error == ESP_OK) {
+        saved_wireguard = cfg.wireguard;
+        publish_wireguard();
+    }
+#endif
     __atomic_add_fetch(&config_revision, 1, __ATOMIC_RELEASE);
+    if (error == ESP_OK && reason) *reason = nullptr;
     if (error == ESP_OK) Log::logf(CAT_CONFIG, LOG_INFO, "Configuration saved\n");
     return error == ESP_OK;
 }
@@ -344,10 +475,15 @@ uint32_t Config::revision(Section section) {
 }
 
 void Config::reset_defaults() {
+    Guard guard;
     prefs.clear();
     onboarding_done = false;
     onboarding_stored = false;
     apply_defaults();
+#if AB_WIREGUARD_ENABLED
+    saved_wireguard = cfg.wireguard;
+    publish_wireguard();
+#endif
     save();
 }
 
@@ -362,10 +498,14 @@ static void format_value(const KVEntry &entry, String &out) {
         case KVEntry::U8:   out = String(*(uint8_t *)entry.ptr); break;
         case KVEntry::U16:  out = String(*(uint16_t *)entry.ptr); break;
         case KVEntry::BOOL: out = *(bool *)entry.ptr ? "1" : "0"; break;
+#if AB_WIREGUARD_ENABLED
+        case KVEntry::WG_MODE: out = aircannect::wireguard_mode_name(*(aircannect::WireguardMode *)entry.ptr); break;
+#endif
     }
 }
 
 bool Config::get_value(const char *key, String &out) {
+    Guard guard;
     for (const KVEntry &entry : kv_table) {
         if (strcasecmp(key, entry.key) == 0) {
             format_value(entry, out);
@@ -394,6 +534,13 @@ const char *Config::ui_theme() {
 }
 
 bool Config::set_value(const char *key, const char *value) {
+    Guard guard;
+#if AB_WIREGUARD_ENABLED
+    if (!strcasecmp(key, "wg_ka")) {
+        uint32_t number;
+        if (!aircannect::parse_uint32_decimal(value, number) || number > UINT16_MAX) return false;
+    }
+#endif
     if (strcasecmp(key, "ui_theme") == 0 && strcmp(value, "auto") != 0) {
         bool supported = false;
         for (const char *id : UI_THEME_IDS)
@@ -440,6 +587,16 @@ bool Config::set_value(const char *key, const char *value) {
                 changed = *(bool*)entry.ptr != (atoi(value) != 0);
                 *(bool*)entry.ptr = (atoi(value) != 0);
                 break;
+#if AB_WIREGUARD_ENABLED
+            case KVEntry::WG_MODE: {
+                aircannect::WireguardMode mode;
+                if (!aircannect::parse_wireguard_mode(value, mode)) return false;
+                auto &current = *(aircannect::WireguardMode *)entry.ptr;
+                changed = current != mode;
+                current = mode;
+                break;
+            }
+#endif
             }
             if (changed) __atomic_add_fetch(&section_revisions[static_cast<size_t>(entry.section)],
                                              1, __ATOMIC_RELEASE);
@@ -458,7 +615,33 @@ bool Config::parse_section(const char *name, Section &out) {
     return false;
 }
 
+Config::Update::Update() {
+#if AB_WIREGUARD_ENABLED
+    before_ = cfg.wireguard;
+#endif
+}
+
+Config::Update::~Update() {
+#if AB_WIREGUARD_ENABLED
+    if (!saved_) cfg.wireguard = before_;
+#endif
+}
+
+bool Config::Update::set_value(const char *key, const char *value) {
+    const bool accepted = Config::set_value(key, value);
+    if (!accepted && !strncasecmp(key, "wg_", 3)) error_ = "invalid_wireguard_value";
+    has_values_ |= accepted;
+    return accepted;
+}
+
+bool Config::Update::save(const char **error) {
+    if (error_) { if (error) *error = error_; return false; }
+    saved_ = !has_values_ || Config::save(error);
+    return saved_;
+}
+
 void Config::foreach_kv(kv_visitor_fn fn, void *ctx, Section section) {
+    Guard guard;
     String val;
     for (const KVEntry &entry : kv_table) {
         if (section != Section::All && entry.section != section) continue;

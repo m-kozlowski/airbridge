@@ -433,7 +433,12 @@ enum StatusFields : uint16_t {
     STATUS_THERAPY = 1, STATUS_OXI = 2, STATUS_HEALTH = 4,
     STATUS_CONFIG = 8, STATUS_IDENTITY = 16, STATUS_REPORT = 32,
     STATUS_STORAGE = 64, STATUS_CLINICAL = 128,
-    STATUS_FIRMWARE = 256, STATUS_ALL = 511,
+    STATUS_FIRMWARE = 256,
+#if AB_WIREGUARD_ENABLED
+    STATUS_VPN = 512, STATUS_ALL = 1023,
+#else
+    STATUS_ALL = 511,
+#endif
 };
 
 template<class Output>
@@ -549,6 +554,16 @@ static void appendStatusFields(Output &json, const DeviceStatus::Snapshot &statu
         jsonAppend(json, "}");
     }
     if (fields & STATUS_IDENTITY) appendStatusIdentity(json);
+#if AB_WIREGUARD_ENABLED
+    if (fields & STATUS_VPN) {
+        jsonAddString(json, "vpn_mode", aircannect::wireguard_mode_name(status.vpn.mode));
+        jsonAddString(json, "vpn_state", aircannect::wireguard_state_name(status.vpn.state));
+        jsonAddBool(json, "vpn_default_route", status.vpn.default_route);
+        jsonAddInt(json, "vpn_handshake_age", status.vpn.handshake_age_s);
+        jsonAddUInt32(json, "vpn_connects", status.vpn.connects);
+        jsonAddString(json, "vpn_error", status.vpn.error);
+    }
+#endif
 }
 
 static size_t buildStatusJson(char *out, size_t cap) {
@@ -1170,28 +1185,33 @@ static void handlePostConfig(AsyncWebServerRequest *request) {
 
     String body;
     if (!getBody(request, body)) return;
+    struct Changes { Config::Update update; int count = 0; } changes;
     String previous_update_url = Config::get().update_url;
     const auto &config = Config::get();
     const String hostname = config.hostname, country = config.wifi_country;
     const String timezone = config.tz, ntp = config.ntp_server;
     const uint8_t mode = config.wifi_mode;
-    struct Changes { int count = 0; } changes;
     if (!json_foreach_kv(body, [](const char *key, const char *val, void *p) {
         auto &changes = *static_cast<Changes *>(p);
-        if (!Config::set_value(key, val)) return;
+        if (!changes.update.set_value(key, val)) return;
         changes.count++;
     }, &changes)) {
         request->send(400, "application/json", "{\"error\":\"bad_json\"}");
         return;
     }
 
-    const bool saved = !changes.count || Config::save();
+    const char *error = nullptr;
+    const bool saved = changes.update.save(&error);
     WiFiSetup::request_reconfigure(hostname != config.hostname || country != config.wifi_country ||
         mode != config.wifi_mode, timezone != config.tz || ntp != config.ntp_server);
     if (Config::get().update_url != previous_update_url)
         OtaManager::config_changed();
     if (!saved) {
-        request->send(500, "application/json", "{\"ok\":false,\"error\":\"nvs_save_failed\"}");
+        String json = "{\"ok\":false";
+        jsonAddString(json, "error", error ? error : "nvs_save_failed");
+        json += '}';
+        request->send(error && strcmp(error, "nvs_save_failed") ? 400 : 500,
+                      "application/json", json);
         return;
     }
 
@@ -3011,6 +3031,13 @@ static uint16_t statusChanges(const DeviceStatus::Snapshot &a,
         a.report_available != b.report_available)
         fields |= STATUS_REPORT;
     if (a.clinical_revision != b.clinical_revision) fields |= STATUS_CLINICAL;
+#if AB_WIREGUARD_ENABLED
+    if (a.vpn.mode != b.vpn.mode || a.vpn.state != b.vpn.state ||
+        a.vpn.default_route != b.vpn.default_route ||
+        a.vpn.handshake_age_s != b.vpn.handshake_age_s ||
+        a.vpn.connects != b.vpn.connects || strcmp(a.vpn.error, b.vpn.error))
+        fields |= STATUS_VPN;
+#endif
     if (a.firmware_repository.revision != b.firmware_repository.revision ||
         a.file_upload.revision != b.file_upload.revision ||
         a.resmed.revision != b.resmed.revision)

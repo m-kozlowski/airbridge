@@ -208,13 +208,38 @@ General storage downloads do not support byte ranges or conditional GET.
 
 `GET /api/config` returns string-valued settings; sensitive values are empty
 strings. Optional `section`: `network`, `access`, `time`, `oximetry`,
-`uart`, `smb`, `sleephq`, `updates`, `logging`. Omit it for all settings.
+`uart`, `smb`, `sleephq`, `updates`, `logging`, and `vpn` in WireGuard-enabled
+builds. Omit it for all settings.
 
 `POST /api/config` accepts a **JSON object with string values** and returns
 `{"ok":true,"saved":N}`. Invalid/unknown values may be ignored: inspect
 `saved` and read back non-secret settings. Do not write the masked GET
 response back wholesale. Keys and allowed values:
 [Configuration](configuration.md).
+
+VPN fields in one POST are validated together, regardless of key order.
+An invalid VPN profile returns `400` with `ok:false` and an `error` such as
+`incomplete`, `bad_address`, `bad_private_key`, `bad_peer_public_key`,
+`bad_preshared_key`, `bad_endpoint`, `bad_allowed_ips`, `too_many_allowed_ips`,
+`allowed_ips_too_long`, `home_ssids_too_long`, or `bad_dns`.
+Invalid `wg_mode`/`wg_ka` values or unknown `wg_*` keys return
+`invalid_wireguard_value`. Failed VPN edits leave the running profile
+unchanged. NVS failures return `500` with `nvs_save_failed`.
+
+WireGuard-enabled builds also expose these fields in `GET /api/status` and
+the existing SSE `status` event:
+
+| Field | Meaning |
+|---|---|
+| `vpn_mode` | Applied mode: `off`, `away`, `always` |
+| `vpn_state` | `disabled`, `home`, `waiting_network`, `waiting_clock`, `connecting`, `up`, `backoff` |
+| `vpn_default_route` | Whether an active tunnel route includes `/0` |
+| `vpn_handshake_age` | Seconds since the last handshake; `-1` if none |
+| `vpn_connects` | Number of transitions to an established tunnel since boot |
+| `vpn_error` | Last tunnel error, or an empty string |
+
+These fields never contain private or preshared keys. Config GETs return empty
+strings for both secrets; omit unchanged secrets from POSTs.
 
 ```sh
 curl --anyauth -u "$AUTH" -H 'Content-Type: application/json' \

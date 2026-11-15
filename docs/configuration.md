@@ -59,6 +59,24 @@ regulatory domain. Use a 2-letter ISO code (`US`, `DE`, `JP`, `PL`, ...) or
 `01` to use the worldwide-safe defaults. Bad values are rejected with a
 log warning and the previous setting stays in effect.
 
+### WireGuard
+
+Included in esp32-s3 builds (`AB_WIREGUARD_ENABLED=1`). Tunnel mode defaults
+to `off`. VPN settings take effect after saving the complete profile.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `wg_mode` | off | `off`, `away` (except on home WiFi), or `always` |
+| `wg_home` | *(empty)* | Comma-separated home SSIDs; matching is case-sensitive |
+| `wg_addr` | *(empty)* | Tunnel IPv4 address, optionally followed by `/32` |
+| `wg_key` | *(empty)* | Private key, base64-encoded |
+| `wg_peer` | *(empty)* | Peer public key, base64-encoded |
+| `wg_psk` | *(empty)* | Optional preshared key, base64-encoded |
+| `wg_ep` | *(empty)* | Peer hostname or IPv4 address, optionally with `:port`; default port 51820 |
+| `wg_ka` | 25 | Keepalive interval in seconds, 0-65535; 0 disables keepalive |
+| `wg_allowed` | 0.0.0.0/0 | Up to seven IPv4 addresses or CIDR networks routed through the tunnel |
+| `wg_dns` | *(empty)* | IPv4 DNS server while the tunnel is up; empty retains WiFi DNS |
+
 ### Web UI
 
 | Key | Default | Description |
