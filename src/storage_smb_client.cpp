@@ -17,6 +17,7 @@
 #include <lwip/tcpip.h>
 
 #include "debug_log.h"
+#include "lwip_core_guard.h"
 #include "string_util.h"
 
 extern "C" {
@@ -57,25 +58,6 @@ namespace {
 static constexpr int SMB_COMMAND_TIMEOUT_SECONDS = 15;
 static constexpr uint32_t SMB_EVENT_LOOP_TIMEOUT_MS =
     SMB_COMMAND_TIMEOUT_SECONDS * 1000UL;
-
-class LwipCoreGuard {
-public:
-#ifdef CONFIG_LWIP_TCPIP_CORE_LOCKING
-    LwipCoreGuard()
-        : locked_(!sys_thread_tcpip(LWIP_CORE_LOCK_QUERY_HOLDER)) {
-        if (locked_) LOCK_TCPIP_CORE();
-    }
-
-    ~LwipCoreGuard() {
-        if (locked_) UNLOCK_TCPIP_CORE();
-    }
-
-private:
-    bool locked_ = false;
-#else
-    LwipCoreGuard() = default;
-#endif
-};
 
 void smb_generic_cb(struct smb2_context *,
                     int status,

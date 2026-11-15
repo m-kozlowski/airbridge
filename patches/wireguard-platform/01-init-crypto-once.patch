@@ -1,0 +1,37 @@
+--- a/wireguard-platform.c
++++ b/wireguard-platform.c
+@@ -76,9 +76,10 @@
+ static struct mbedtls_ctr_drbg_context random_context;
+ static struct mbedtls_entropy_context entropy_context;
+ #else
+ static mbedtls_ctr_drbg_context random_context;
+ static mbedtls_entropy_context entropy_context;
+ #endif
++static bool random_context_initialized;
+ 
+ static int entropy_hw_random_source( void *data, unsigned char *output, size_t len, size_t *olen ) {
+ 	esp_fill_random(output, len);
+@@ -99,6 +99,10 @@
+ 	int mbedtls_err;
+ 	esp_err_t err;
+ 
++	if (random_context_initialized) {
++		return ESP_OK;
++	}
++
+ 	mbedtls_entropy_init(&entropy_context);
+ 	mbedtls_ctr_drbg_init(&random_context);
+ 	mbedtls_err = mbedtls_entropy_add_source(
+@@ -123,8 +123,11 @@
+ 		err = ESP_ERR_INVALID_CRC;
+ 		goto fail;
+ 	}
+-	err = ESP_OK;
++	random_context_initialized = true;
++	return ESP_OK;
+ fail:
++	mbedtls_ctr_drbg_free(&random_context);
++	mbedtls_entropy_free(&entropy_context);
+ 	return err;
+ #endif
+ }

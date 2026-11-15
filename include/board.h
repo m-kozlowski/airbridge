@@ -1,5 +1,15 @@
 #pragma once
 
+#ifndef AB_WIREGUARD_ENABLED
+#define AB_WIREGUARD_ENABLED 0
+#endif
+
+#if AB_WIREGUARD_ENABLED
+#include <sdkconfig.h>
+#if !defined(CONFIG_IDF_TARGET_ESP32S3) || !CONFIG_IDF_TARGET_ESP32S3
+#error "WireGuard is supported only on esp32-s3"
+#endif
+#endif
 
 // UART1 -> AirSense USART3
 #ifndef AB_AS10_TX_GPIO
