@@ -200,7 +200,8 @@ All commands are prefixed with `$`. Anything without `$` is sent to the AirSense
 | `$FLASH CANCEL` | Request cancellation; an in-progress programming sequence must finish |
 | `$LOG` | Show log levels |
 | `$LOG category level` | Set log level (ERROR/WARN/INFO/DEBUG) |
-| `$TRANSPARENT` | Raw UART passthrough (60s idle timeout) |
+| `$TRANSPARENT` | Raw UART passthrough (5s idle timeout) |
+| `$TRANSPARENT HOLD` | Raw UART passthrough until the TCP connection closes |
 | `$FRAMED` | Switch to framed UART mode |
 | `$VERSION` | Firmware version, build time and target |
 | `$REBOOT` | Restart device |

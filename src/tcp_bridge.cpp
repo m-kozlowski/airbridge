@@ -351,7 +351,7 @@ private:
     size_t pending_len = 0;
 };
 
-static void handle_transparent() {
+static void handle_transparent(bool hold) {
     auto &cfg = Config::get();
     system_state_t st = Arbiter::get_state();
 
@@ -365,6 +365,17 @@ static void handle_transparent() {
         return;
     }
 
+    // Detect a vanished peer without expiring a connected, paused receiver.
+    const int enabled = 1, idle = 30, interval = 10, probes = 3;
+    if (hold &&
+        (client.setSocketOption(SOL_SOCKET, SO_KEEPALIVE, &enabled, sizeof(enabled)) ||
+         client.setSocketOption(IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle)) ||
+         client.setSocketOption(IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval)) ||
+         client.setSocketOption(IPPROTO_TCP, TCP_KEEPCNT, &probes, sizeof(probes)))) {
+        client.println("ERR: unable to enable TCP keepalive");
+        return;
+    }
+
     TransparentOutput output;
     Arbiter::enter_transparent(&output);
 
@@ -375,8 +386,8 @@ static void handle_transparent() {
         return;
     }
 
-    client.printf("OK: entering transparent mode (idle timeout 5s) reply_buffer=%u\r\n",
-                  unsigned(output.reply_buffer()));
+    client.printf("OK: entering transparent mode idle_timeout=%u reply_buffer=%u\r\n",
+                  hold ? 0u : 5u, unsigned(output.reply_buffer()));
 
     static const uint32_t TRANSPARENT_IDLE_TIMEOUT = 5000;
 
@@ -391,10 +402,12 @@ static void handle_transparent() {
         output_ok = output.pump(client.fd());
         if (n <= 0 && (!output_ok || !client.connected())) break;
 
-        // Idle timeout: 5s since last activity in either direction
+        // HOLD sessions end on TCP disconnect. A flow-controlled UART sender can
+        // legitimately be silent while the receiver is blocked.
+        // Other sessions time out after 5s without activity in either direction.
         // TCP->UART tracked here, UART->TCP tracked by rx_task via transparent_last_activity
         uint32_t last = Arbiter::transparent_activity();
-        if (millis() - last > TRANSPARENT_IDLE_TIMEOUT) {
+        if (!hold && millis() - last > TRANSPARENT_IDLE_TIMEOUT) {
             break;
         }
 
@@ -714,8 +727,9 @@ void TcpBridge::task(void *param) {
                 if (line_pos > 0) {
                     line_buf[line_pos] = '\0';
 
-                    if (strcasecmp(line_buf, "$TRANSPARENT") == 0) {
-                        handle_transparent();
+                    if (strcasecmp(line_buf, "$TRANSPARENT") == 0 ||
+                        strcasecmp(line_buf, "$TRANSPARENT HOLD") == 0) {
+                        handle_transparent(strcasecmp(line_buf, "$TRANSPARENT HOLD") == 0);
                     } else if (strcasecmp(line_buf, "$FRAMED") == 0) {
                         handle_framed();
                     } else {
