@@ -288,9 +288,19 @@ static void handle_line(const char *line) {
 class TransparentOutput : public Stream {
 public:
     TransparentOutput() {
-        queue = xStreamBufferCreateStatic(sizeof(storage), 1, storage, &queue_state);
+        // Hold sixteen maximum-size replies even while TCP is stalled.
+        storage = static_cast<uint8_t *>(aircannect::Memory::alloc_large(8192 + 1));
+        buffer_size = storage ? 8192 : sizeof(fallback_storage) - 1;
+        queue = xStreamBufferCreateStatic(buffer_size + 1, 1,
+                                         storage ? storage : fallback_storage,
+                                         &queue_state);
     }
-    ~TransparentOutput() { vStreamBufferDelete(queue); }
+    ~TransparentOutput() {
+        vStreamBufferDelete(queue);
+        aircannect::Memory::free(storage);
+    }
+
+    size_t reply_buffer() const { return buffer_size; }
 
     size_t write(uint8_t byte) override { return write(&byte, 1); }
     size_t write(const uint8_t *data, size_t len) override {
@@ -329,7 +339,9 @@ public:
 
 private:
     StaticStreamBuffer_t queue_state;
-    uint8_t storage[513];
+    uint8_t *storage;
+    size_t buffer_size;
+    uint8_t fallback_storage[513];
     StreamBufferHandle_t queue;
     bool failed = false;
     uint8_t pending[64];
@@ -361,7 +373,8 @@ static void handle_transparent() {
         return;
     }
 
-    client.println("OK: entering transparent mode (idle timeout 5s)");
+    client.printf("OK: entering transparent mode (idle timeout 5s) reply_buffer=%u\r\n",
+                  unsigned(output.reply_buffer()));
 
     static const uint32_t TRANSPARENT_IDLE_TIMEOUT = 5000;
 
