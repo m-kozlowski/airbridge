@@ -344,7 +344,9 @@ private:
     uint8_t fallback_storage[513];
     StreamBufferHandle_t queue;
     bool failed = false;
-    uint8_t pending[64];
+    // Coalesce queued UART fragments instead of allocating a TCP segment for
+    // each small RX fragment. Retain the unsent tail when the socket is full.
+    uint8_t pending[1460];
     size_t pending_pos = 0;
     size_t pending_len = 0;
 };
