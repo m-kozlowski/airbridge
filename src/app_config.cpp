@@ -40,7 +40,7 @@ static const struct {
     {Config::Section::Updates, "updates", "Firmware updates"},
     {Config::Section::Logging, "logging", "Logging"},
 #if AB_WIREGUARD_ENABLED
-    {Config::Section::Vpn, "vpn", "VPN", false},
+    {Config::Section::Vpn, "vpn", "VPN (WireGuard)"},
 #endif
 };
 
@@ -72,7 +72,7 @@ struct KVEntry {
 #define KV_LANGUAGE(k, n, f, d, s) KV_STR(k, n, f, d, s)
 #define KV_THEME(k, n, f, d, s) KV_STR(k, n, f, d, s)
 #define KV_BOOL(k, n, f, d, s, ...) {k, n, KVEntry::BOOL, &cfg.f, {uint32_t(d)}, false, Config::Section::s}
-#define KV_WG_MODE(k, n, f, d, s) {k, n, KVEntry::WG_MODE, &cfg.f, {uint32_t(d)}, false, Config::Section::s}
+#define KV_WG_MODE(k, n, f, d, s, ...) {k, n, KVEntry::WG_MODE, &cfg.f, {uint32_t(d)}, false, Config::Section::s}
 
 static const KVEntry kv_table[] = {
     KV_STR("hostname", "hostname", hostname, DEFAULT_HOSTNAME, Network),
@@ -114,7 +114,7 @@ static const KVEntry kv_table[] = {
     KV_STR("sleephq_team_id", "shq_team", sleephq_team_id, "", SleepHq),
     KV_STR("sleephq_device_id", "shq_device", sleephq_device_id, "", SleepHq),
 #if AB_WIREGUARD_ENABLED
-    KV_WG_MODE("wg_mode", "wg_mode", wireguard.mode, 0, Vpn),
+    KV_WG_MODE("wg_mode", "wg_mode", wireguard.mode, 0, Vpn, "off=Off", "away=Away from home Wi-Fi", "always=Always"),
     KV_STR("wg_home", "wg_home", wireguard.home_ssids, "", Vpn),
     KV_STR("wg_addr", "wg_addr", wireguard.address, "", Vpn),
     KV_SECRET("wg_key", "wg_key", wireguard.private_key, "", Vpn),

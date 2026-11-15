@@ -128,13 +128,15 @@ def fill_config_sections(html, source, catalogs=None, themes=None):
         if sections[section] is None:
             continue
         sections[section]['keys'].append(key)
+        if kind == 'SECRET':
+            sections[section].setdefault('secrets', []).append(key)
         if kind == 'LANGUAGE':
             sections[section]['options'][key] = [['auto', 'Browser language']] + [
                 [tag, catalog['language.name']] for tag, catalog in catalogs.items()]
         if kind == 'THEME':
             sections[section]['options'][key] = [['auto', 'Automatic']] + [
                 [theme['id'], theme['id']] for theme in themes]
-        if kind in ('BOOL', 'ENUM'):
+        if kind in ('BOOL', 'ENUM', 'WG_MODE'):
             labels = (json.loads('[' + choices.removeprefix(', ') + ']') if choices
                       else ['0=Disabled', '1=Enabled'] if kind == 'BOOL' else [])
             if not labels:

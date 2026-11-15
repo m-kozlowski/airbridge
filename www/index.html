@@ -1696,6 +1696,9 @@ function renderStatus(d) {
   }
   if (d.ui_language !== undefined) applyUiLanguage(d.ui_language);
   if (d.ui_theme !== undefined) applyUiTheme(d.ui_theme);
+  if (d.vpn_state !== undefined || d.vpn_mode !== undefined || d.vpn_error !== undefined ||
+      d.vpn_default_route !== undefined || d.vpn_handshake_age !== undefined || d.vpn_connects !== undefined)
+    renderWireguardStatus();
   if (d.resmed !== undefined || d.file_upload !== undefined || d.firmware_repository_revision !== undefined) applyResmedStatus(d);
   if (d.report_source !== undefined || d.report_revision !== undefined || d.report_data_revision !== undefined || d.report_state !== undefined || d.report_error !== undefined || d.report_available !== undefined) applyReportStatus(d);
   if (d.system !== undefined || d.rop !== undefined) renderReportAvailability();
@@ -3922,10 +3925,12 @@ function renderConfigFields(root, d) {
       root.appendChild(heading);
     }
     var row = document.createElement('div'); row.className = 'row';
-    var isPass = k.includes('pass') || k.includes('secret');
+    var isPass = categoryInfo?.secrets?.includes(k) || k.includes('pass') || k.includes('secret');
     var opts = categoryInfo?.options[k];
     var label = document.createElement('label');
-    label.textContent = k;
+    var title = document.createElement('span');
+    uiText(title, uiMessage('config.label.' + k, {}, k));
+    label.appendChild(title);
     if (UI_CATALOGS.en['config.help.' + k]) {
       var help = document.createElement('small');
       uiText(help, uiMessage('config.help.' + k));
@@ -3960,6 +3965,202 @@ function renderConfigFields(root, d) {
     root.appendChild(row);
     if (isPass) row.querySelector('input').addEventListener('input', function() { this.setAttribute('data-dirty', '1'); uiText(this, uiMessage('config.emptyRemove'), 'placeholder'); });
     if (k === 'tz') attachTzHelper(row.querySelector('input'));
+  }
+  if (root.dataset.configForm === 'vpn') renderWireguardImport(root);
+}
+
+function validIpv4(value) {
+  const text = String(value || "").trim();
+  if (!text.length) return true;
+  const parts = text.split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((part) => {
+    if (!/^\d+$/.test(part)) return false;
+    const byte = Number(part);
+    return byte >= 0 && byte <= 255;
+  });
+}
+
+const wireguardKeyPattern = /^[A-Za-z0-9+/]{43}=$/;
+
+function validWireguardEndpoint(value) {
+  const text = String(value || "").trim();
+  if (!text.length) return true;
+  const match = /^([^\s:\[\]]+)(?::(\d{1,5}))?$/.exec(text);
+  if (!match) return false;
+  return !match[2] || (Number(match[2]) >= 1 && Number(match[2]) <= 65535);
+}
+
+function validWireguardAllowedIps(value) {
+  return String(value || "").split(",").map((item) => item.trim())
+    .filter((item) => item.length).every((item) => {
+      const parts = item.split("/");
+      if (parts.length > 2 || !validIpv4(parts[0]) || !parts[0].length) return false;
+      return parts.length === 1 ||
+        (/^\d{1,2}$/.test(parts[1]) && Number(parts[1]) <= 32);
+    });
+}
+
+// Parses a wg-quick style .conf into config keys. Only IPv4 is used by
+// the device, so IPv6 addresses and routes are dropped with a note.
+function parseWireguardConf(text) {
+  const result = {values: {}, notes: []};
+  const peers = [];
+  let section = null;
+  let current = null;
+  const iface = {};
+
+  String(text || "").split(/\r?\n/).forEach((rawLine, index) => {
+    const line = rawLine.replace(/[#;].*$/, "").trim();
+    if (!line.length) return;
+    const header = /^\[(\w+)\]$/.exec(line);
+    if (header) {
+      section = header[1].toLowerCase();
+      if (section === "peer") {
+        current = {};
+        peers.push(current);
+      } else if (section !== "interface") {
+        throw uiFailure("wg.unknown_section", {line: index + 1, section: header[1]});
+      }
+      return;
+    }
+    const eq = line.indexOf("=");
+    if (eq <= 0 || !section) {
+      throw uiFailure("wg.invalid_line", {line: index + 1});
+    }
+    const key = line.slice(0, eq).trim().toLowerCase();
+    const value = line.slice(eq + 1).trim();
+    (section === "peer" ? current : iface)[key] = value;
+  });
+
+  if (!Object.prototype.hasOwnProperty.call(iface, "privatekey")) {
+    throw uiFailure("wg.private_missing");
+  }
+  if (!iface.privatekey) {
+    throw uiFailure("wg.private_empty");
+  }
+  if (peers.length !== 1) {
+    throw uiFailure("wg.peer_count", {count: peers.length});
+  }
+  const peer = peers[0];
+  if (!peer.publickey) throw uiFailure("wg.public_missing");
+  if (!peer.endpoint) throw uiFailure("wg.endpoint_missing");
+
+  const address = String(iface.address || "").split(",").map((item) => item.trim())
+    .find((item) => validIpv4(item.split("/")[0]) && item.split("/")[0].length);
+  if (!address) throw uiFailure("wg.address_missing");
+  const addressIp = address.split("/")[0];
+  if (address.includes("/") && address.split("/")[1] !== "32") {
+    result.notes.push(uiMessage("wg.address_used", {address, ip: addressIp}));
+  }
+
+  const allowedAll = String(peer.allowedips || "0.0.0.0/0").split(",")
+    .map((item) => item.trim()).filter((item) => item.length);
+  const allowed = allowedAll.filter((item) => !item.includes(":"));
+  if (allowed.length !== allowedAll.length) result.notes.push(uiMessage("wg.ipv6_ignored"));
+  if (!allowed.length) throw uiFailure("wg.allowed_missing");
+
+  // Hotspot resolvers often refuse queries arriving via the home WAN.
+  const dnsAll = String(iface.dns || "").split(",").map((item) => item.trim())
+    .filter((item) => item.length);
+  const dns = dnsAll.find((item) => validIpv4(item));
+  if (dnsAll.length && !dns) result.notes.push(uiMessage("wg.dns_ignored"));
+  if (dns && dnsAll.length > 1) result.notes.push(uiMessage("wg.dns_used", {dns}));
+  ["mtu", "listenport", "table", "preup", "postup", "predown", "postdown"]
+    .forEach((key) => {
+      if (iface[key]) result.notes.push(uiMessage("wg.ignored", {key}));
+    });
+
+  result.values.wg_addr = addressIp;
+  result.values.wg_key = iface.privatekey;
+  result.values.wg_peer = peer.publickey;
+  result.values.wg_psk = peer.presharedkey || "";
+  result.values.wg_ep = peer.endpoint;
+  result.values.wg_allowed = allowed.join(",");
+  result.values.wg_dns = dns || "";
+  if (peer.persistentkeepalive) {
+    result.values.wg_ka = peer.persistentkeepalive;
+  }
+
+  const errors = [];
+  if (!wireguardKeyPattern.test(result.values.wg_key)) errors.push("PrivateKey");
+  if (!wireguardKeyPattern.test(result.values.wg_peer)) errors.push("PublicKey");
+  if (result.values.wg_psk && !wireguardKeyPattern.test(result.values.wg_psk)) {
+    errors.push("PresharedKey");
+  }
+  if (!validWireguardEndpoint(result.values.wg_ep)) errors.push("Endpoint");
+  if (!validWireguardAllowedIps(result.values.wg_allowed)) errors.push("AllowedIPs");
+  if (errors.length) throw uiFailure("wg.invalid", {fields: errors.join(", ")});
+  return result;
+}
+
+
+function renderWireguardImport(root) {
+  const panel = document.createElement('div');
+  panel.className = 'btn-row';
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.conf,text/plain';
+  input.hidden = true;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn';
+  uiText(button, uiMessage('wg.import'));
+  button.onclick = () => input.click();
+  input.onchange = () => importWireguardConf(input, root);
+  panel.append(input, button);
+  root.prepend(panel);
+}
+
+async function importWireguardConf(input, root) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file || root.dataset.loading === '1' || root.dataset.saving === '1') return;
+  const message = document.getElementById(root.id + '-msg');
+  try {
+    if (file.size > 8192) throw uiFailure('wg.too_large');
+    const parsed = parseWireguardConf(await file.text());
+    if (!input.isConnected || root.dataset.loading === '1' || root.dataset.saving === '1') return;
+    for (const [key, value] of Object.entries(parsed.values)) {
+      const control = root.querySelector('[data-key="' + key + '"]');
+      if (!control) continue;
+      control.value = value;
+      control.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+    const mode = root.querySelector('[data-key="wg_mode"]');
+    if (mode && mode.value === 'off') mode.value = 'away';
+    const notes = parsed.notes.length ? {items:[' (', {items:parsed.notes, separator:'; '}, ')'], separator:''} : '';
+    showMsg(message, uiMessage('wg.imported', {file:file.name, notes}), 'ok', 0);
+  } catch (error) {
+    showMsg(message, uiMessage('wg.import_failed', {error:uiError(error)}), 'err', 0);
+  }
+}
+
+function renderWireguardStatus() {
+  const root = document.getElementById('wireguardStatus');
+  if (!root) return;
+  const status = lastStatus;
+  const fields = {
+    mode: uiMessage('config.option.wg_mode.' + status.vpn_mode, {}, status.vpn_mode ?? '--'),
+    state: uiMessage('wg.state.' + status.vpn_state, {}, status.vpn_state ?? '--'),
+    defaultRoute: status.vpn_default_route === undefined ? '--' : uiMessage('common.' + (status.vpn_default_route ? 'yes' : 'no')),
+    handshake: status.vpn_handshake_age >= 0 ? uiMessage('wg.secondsAgo', {seconds:status.vpn_handshake_age}) : '--',
+    connects: status.vpn_connects ?? '--',
+    error: status.vpn_error || '--'
+  };
+  for (const [key, value] of Object.entries(fields)) {
+    let output = root.querySelector('[data-vpn="' + key + '"]');
+    if (!output) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const label = document.createElement('span');
+      uiText(label, uiMessage('wg.status.' + key));
+      output = document.createElement('span');
+      output.dataset.vpn = key;
+      row.append(label, output);
+      root.appendChild(row);
+    }
+    uiText(output, value);
   }
 }
 
@@ -4019,6 +4220,7 @@ async function loadConfig(selected = configSection) {
   if (!categories.children.length) {
     for (const section of CFG_SECTIONS) {
       if (!configStorageSupported && ['smb','sleephq'].includes(section.id)) continue;
+      if (section.id === 'vpn' && lastStatus.vpn_mode === undefined) continue;
       const button = document.createElement('button');
       uiText(button, uiMessage('config.section.' + section.id, {}, section.label));
       button.dataset.section = section.id;
@@ -4028,6 +4230,11 @@ async function loadConfig(selected = configSection) {
       const panel = document.createElement('div');
       panel.id = 'config-panel-' + section.id;
       panel.hidden = true;
+      if (section.id === 'vpn') {
+        const status = document.createElement('div');
+        status.id = 'wireguardStatus';
+        panel.appendChild(status);
+      }
       if (section.id === 'network') {
         const wifi = document.getElementById('configWifi');
         wifi.hidden = false;
@@ -4057,6 +4264,7 @@ async function loadConfig(selected = configSection) {
       container.appendChild(panel);
     }
   }
+  renderWireguardStatus();
   configSection = selected;
   for (const button of categories.children) {
     const active = button.dataset.section === selected;
@@ -4083,7 +4291,11 @@ async function saveConfig(rootId, messageId) {
     const r = await api('/api/config', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)});
     if (!r) return;
     const d = await r.json();
-    if (!r.ok || d.ok !== true) throw new Error(d.error || 'config_save_failed');
+    if (!r.ok || d.ok !== true) {
+      const key = 'wg.error.' + d.error;
+      if (root.dataset.configForm === 'vpn' && UI_CATALOGS.en[key]) throw uiFailure(key);
+      throw new Error(d.error || 'config_save_failed');
+    }
     if (d.saved !== Object.keys(changes).length)
       throw uiFailure('config.partialSave', {count:d.saved});
     fields.forEach(inp => {
